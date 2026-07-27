@@ -1,11 +1,11 @@
 {
-  "name": "srotas-whatsapp-bot-mcp",
+  "name": "ajm-whatsapp-bot-mcp",
   "version": "1.0.0",
-  "description": "MCP server exposing the Srotas WhatsApp Bot REST API as tools for AI agents (Claude Desktop, Claude Code, Cursor, or any MCP-compatible client).",
+  "description": "MCP server exposing the AJM WhatsApp Bot REST API as tools for AI agents (Claude Desktop, Claude Code, Cursor, or any MCP-compatible client).",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "srotas-whatsapp-bot-mcp": "src/index.js"
+    "ajm-whatsapp-bot-mcp": "src/index.js"
   },
   "scripts": {
     "start": "node src/index.js"

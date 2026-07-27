@@ -14,7 +14,7 @@ import { registerAnalyticsTools } from './tools/analytics.js';
 import { registerSchedulerTools } from './tools/scheduler.js';
 
 const server = new McpServer({
-    name: 'srotas-whatsapp-bot',
+    name: 'ajm-whatsapp-bot',
     version: '1.0.0',
 });
 
@@ -32,10 +32,10 @@ registerSchedulerTools(server);
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('Srotas WhatsApp Bot MCP server running on stdio');
+    console.error('AJM WhatsApp Bot MCP server running on stdio');
 }
 
 main().catch((err) => {
-    console.error('Fatal error starting Srotas WhatsApp Bot MCP server:', err);
+    console.error('Fatal error starting AJM WhatsApp Bot MCP server:', err);
     process.exit(1);
 });

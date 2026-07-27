@@ -14,8 +14,8 @@
     "build:mac": "npm run build:ui && electron-builder --mac --publish never"
   },
   "build": {
-    "appId": "com.srotas.whatsappbot",
-    "productName": "Srotas WhatsApp Bot",
+    "appId": "com.ajm.whatsappbot",
+    "productName": "AJM WhatsApp Bot",
     "directories": {
       "output": "dist"
     },
@@ -39,7 +39,7 @@
       "icon": "public/icon.ico"
     },
     "nsis": {
-      "guid": "com.srotas.whatsappbot",
+      "guid": "com.ajm.whatsappbot",
       "createDesktopShortcut": "always",
       "deleteAppDataOnUninstall": false,
       "installerSidebar": null

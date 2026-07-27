@@ -22,7 +22,7 @@ export function Help() {
         <div className="p-8 max-w-4xl mx-auto space-y-6">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Help & Resources</h1>
-                <p className="text-muted-foreground mt-1">Learn how to use Srotas.bot effectively. Click on any section to expand.</p>
+                <p className="text-muted-foreground mt-1">Learn how to use AJM.bot effectively. Click on any section to expand.</p>
             </div>
 
             <Card>

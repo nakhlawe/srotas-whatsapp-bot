@@ -42,16 +42,16 @@ jobs:
           context: .
           push: false
           load: true
-          tags: srotas-bot:pr-test
+          tags: ajm-bot:pr-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Save Docker Image to Tarball
-        run: docker save srotas-bot:pr-test -o srotas-bot-docker-image.tar
+        run: docker save ajm-bot:pr-test -o ajm-bot-docker-image.tar
       - name: Upload Docker Image Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: srotas-bot-docker-image
-          path: srotas-bot-docker-image.tar
+          name: ajm-bot-docker-image
+          path: ajm-bot-docker-image.tar
           retention-days: 7
 
   build-windows:
@@ -95,7 +95,7 @@ jobs:
           $exeFile = $null
           foreach ($dir in $searchDirs) {
             if (Test-Path $dir) {
-              $found = Get-ChildItem -Path $dir -Filter "*Srotas*.exe" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Setup*" } | Select-Object -First 1
+              $found = Get-ChildItem -Path $dir -Filter "*AJM*.exe" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Setup*" } | Select-Object -First 1
               if (!$found) {
                 $found = Get-ChildItem -Path $dir -Filter "*whatsapp*.exe" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Setup*" } | Select-Object -First 1
               }
@@ -112,7 +112,7 @@ jobs:
           Write-Host "Found installed executable: $($exeFile.FullName)"
           Write-Host "Starting installed app server: $($exeFile.FullName) --run-server"
           $env:PORT = "3005"
-          $env:APP_USER_DATA_PATH = "$env:LOCALAPPDATA\SrotasWhatsAppBotData"
+          $env:APP_USER_DATA_PATH = "$env:LOCALAPPDATA\AJMWhatsAppBotData"
           $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
           $proc = Start-Process -FilePath $exeFile.FullName -ArgumentList "--run-server" -PassThru -RedirectStandardOutput "server-out.log" -RedirectStandardError "server-err.log"
           
@@ -142,7 +142,7 @@ jobs:
           Write-Host "Server started and ready in $startupTimeMs ms ($([Math]::Round($startupTimeMs/1000, 2)) s)!"
           
           # Measure idle memory consumption of process tree
-          $procs = Get-Process | Where-Object { $_.ProcessName -like "*Srotas*" -or $_.Id -eq $proc.Id }
+          $procs = Get-Process | Where-Object { $_.ProcessName -like "*AJM*" -or $_.Id -eq $proc.Id }
           $totalWsBytes = ($procs | Measure-Object WorkingSet64 -Sum).Sum
           $totalPrivateBytes = ($procs | Measure-Object PrivateMemorySize64 -Sum).Sum
           $memWsMB = [Math]::Round($totalWsBytes / 1MB, 2)
@@ -168,7 +168,7 @@ jobs:
           Start-Sleep -Seconds 15
           
           # Measure active memory consumption of entire process tree including spawned Chromium browsers
-          $activeProcs = Get-Process | Where-Object { $_.ProcessName -like "*Srotas*" -or $_.ProcessName -like "*chrome*" -or $_.Id -eq $proc.Id }
+          $activeProcs = Get-Process | Where-Object { $_.ProcessName -like "*AJM*" -or $_.ProcessName -like "*chrome*" -or $_.Id -eq $proc.Id }
           $activeWsBytes = ($activeProcs | Measure-Object WorkingSet64 -Sum).Sum
           $activePrivateBytes = ($activeProcs | Measure-Object PrivateMemorySize64 -Sum).Sum
           $activeWsMB = [Math]::Round($activeWsBytes / 1MB, 2)
@@ -196,11 +196,11 @@ jobs:
           }
           
           Write-Host "All functionality tests passed against installed Windows .exe!"
-          Get-Process | Where-Object { $_.ProcessName -like "*Srotas*" -or $_.ProcessName -like "*chrome*" -or $_.Id -eq $proc.Id } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process | Where-Object { $_.ProcessName -like "*AJM*" -or $_.ProcessName -like "*chrome*" -or $_.Id -eq $proc.Id } | Stop-Process -Force -ErrorAction SilentlyContinue
       - name: Upload Windows Installer (.exe) Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: srotas-bot-windows-installer
+          name: ajm-bot-windows-installer
           path: dist/*.exe
           retention-days: 7
 
@@ -226,7 +226,7 @@ jobs:
       - name: Upload macOS Packages (.dmg / .pkg) Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: srotas-bot-macos-installer
+          name: ajm-bot-macos-installer
           path: |
             dist/*.dmg
             dist/*.pkg

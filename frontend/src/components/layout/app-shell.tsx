@@ -141,7 +141,7 @@ export function AppShell({ children }: AppShellProps) {
                         </div>
                         <div>
                             <div className="font-bold text-base tracking-tight leading-none" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                                Srotas<span className="text-primary">.bot</span>
+                                AJM<span className="text-primary">.bot</span>
                             </div>
                             <div className="text-[10px] text-muted-foreground tracking-widest uppercase">Dashboard</div>
                         </div>
@@ -238,7 +238,7 @@ export function AppShell({ children }: AppShellProps) {
                         <div className="text-[10px] text-muted-foreground mt-1 flex items-center justify-center gap-1">
                             <span>designed by</span>
                             <motion.a
-                                href="https://srotas.tech"
+                                href="https://ajm.tech"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="font-bold tracking-wider inline-flex items-center text-xs"
@@ -255,7 +255,7 @@ export function AppShell({ children }: AppShellProps) {
                                 animate={{ backgroundPosition: ['0px 30%', '15px 30%'] }}
                                 transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
                             >
-                                srotas.tech
+                                ajm.tech
                             </motion.a>
                         </div>
                     </div>
@@ -273,7 +273,7 @@ export function AppShell({ children }: AppShellProps) {
                         <h2 className="text-base font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                             {activeLabel}
                         </h2>
-                        <p className="text-xs text-muted-foreground">Srotas.bot · WhatsApp Automation Platform</p>
+                        <p className="text-xs text-muted-foreground">AJM.bot · WhatsApp Automation Platform</p>
                     </div>
                     <button
                         onClick={() => setActivePage('updates')}

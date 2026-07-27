@@ -1,4 +1,4 @@
-# 🤖 Srotas WhatsApp Bot
+# 🤖 AJM WhatsApp Bot
 
 **v1.5.2** · A high-performance, full-stack WhatsApp automation and marketing platform powered by a modern dark-themed web dashboard. Built on top of lightweight WebSocket technology (**Baileys Engine**), it eliminates heavy browser overhead while delivering enterprise-grade multi-account management, bulk messaging, scheduled campaigns, and AI-powered conversational auto-replies.
 
@@ -6,7 +6,7 @@
 
 ## ⚡ Key Highlights & Architecture (v1.2+)
 
-Unlike older WhatsApp automation tools that launch resource-heavy headless Chromium browsers (`whatsapp-web.js` / Puppeteer), Srotas WhatsApp Bot utilizes direct WebSocket communication via **Baileys**:
+Unlike older WhatsApp automation tools that launch resource-heavy headless Chromium browsers (`whatsapp-web.js` / Puppeteer), AJM WhatsApp Bot utilizes direct WebSocket communication via **Baileys**:
 
 - **Ultra-Low Memory Footprint:** Consumes a fraction of system RAM and CPU compared to Chromium-based solutions.
 - **Native Multi-Device Support:** Fully compatible with WhatsApp Multi-Device protocol. Connect multiple numbers concurrently.
@@ -34,12 +34,12 @@ Choose the method that best fits your workflow:
 Download the latest standalone installer from the [GitHub Releases page](https://github.com/itsdkyp/srotas-whatsapp-bot/releases/latest).
 
 ### Windows
-1. Download `Srotas.WhatsApp.Bot.Setup.1.5.2.exe`.
+1. Download `AJM.WhatsApp.Bot.Setup.1.5.2.exe`.
 2. Run the installer and follow the setup wizard.
-3. Launch **Srotas WhatsApp Bot** from your Desktop or Start Menu. The built-in background server starts automatically and opens the dashboard in your browser.
+3. Launch **AJM WhatsApp Bot** from your Desktop or Start Menu. The built-in background server starts automatically and opens the dashboard in your browser.
 
 ### macOS
-1. Download `Srotas.WhatsApp.Bot-1.5.2-arm64.dmg` (Apple Silicon M1/M2/M3) or the universal `.dmg` / `.pkg`.
+1. Download `AJM.WhatsApp.Bot-1.5.2-arm64.dmg` (Apple Silicon M1/M2/M3) or the universal `.dmg` / `.pkg`.
 2. Drag the application icon into your `Applications` folder.
 3. Open the app from Applications or Spotlight.
 
@@ -270,4 +270,4 @@ Next.js static web applications cache aggressively in browser memory:
 
 ## 📜 License
 
-ISC © [Srotas Tech](https://srotas.tech)
+ISC © [AJM Tech](https://ajm.tech)

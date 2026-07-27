@@ -1,7 +1,7 @@
-# Srotas.bot — Project Status & Implementation Details
+# AJM.bot — Project Status & Implementation Details
 
 ## 📌 Project Overview
-Srotas.bot is a robust, self-hosted WhatsApp automation dashboard built with Node.js. It allows users to manage multiple WhatsApp sessions, manage contacts/groups, send bulk campaigns w/ media, schedule messages, and handle auto-replies using AI or canned "Quick Responses".
+AJM.bot is a robust, self-hosted WhatsApp automation dashboard built with Node.js. It allows users to manage multiple WhatsApp sessions, manage contacts/groups, send bulk campaigns w/ media, schedule messages, and handle auto-replies using AI or canned "Quick Responses".
 
 ## 🛠 Technical Architecture
 

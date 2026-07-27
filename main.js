@@ -164,7 +164,7 @@ function startServer() {
     serverProcess = utilityProcess.fork(path.join(app.getAppPath(), 'server.js'), [], {
         env: childEnv,
         stdio: 'pipe',
-        serviceName: 'Srotas WhatsApp Bot Backend',
+        serviceName: 'AJM WhatsApp Bot Backend',
         // NODE_OPTIONS isn't supported for utility processes in packaged apps —
         // pass the V8 heap-size flag via execArgv instead, which is.
         execArgv: ['--max-old-space-size=256'],

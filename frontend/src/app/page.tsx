@@ -112,7 +112,7 @@ export default function Home() {
               className="text-3xl font-bold mb-1"
               style={{ fontFamily: "'Space Grotesk', sans-serif" }}
             >
-              Srotas<span className="text-primary">.bot</span>
+              AJM<span className="text-primary">.bot</span>
             </motion.h1>
 
             <motion.p
@@ -160,7 +160,7 @@ export default function Home() {
               className="mt-6 text-xs text-muted-foreground"
             >
               Need a license?{' '}
-              <a href="https://www.srotas.tech/products/srotas-whatsapp-bot" target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              <a href="https://www.ajm.tech/products/ajm-whatsapp-bot" target="_blank" rel="noreferrer" className="text-primary hover:underline">
                 Buy here
               </a>
             </motion.p>

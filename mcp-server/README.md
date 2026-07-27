@@ -1,12 +1,12 @@
-# Srotas WhatsApp Bot — MCP Server
+# AJM WhatsApp Bot — MCP Server
 
-Exposes the Srotas WhatsApp Bot REST API (`../server.js`) as [MCP](https://modelcontextprotocol.io) tools, so any MCP-compatible AI agent — Claude Code, Claude Desktop, Cursor, Copilot Chat, or a custom agent — can manage devices, contacts, campaigns, templates, scheduling, and analytics through natural language, instead of the dashboard.
+Exposes the AJM WhatsApp Bot REST API (`../server.js`) as [MCP](https://modelcontextprotocol.io) tools, so any MCP-compatible AI agent — Claude Code, Claude Desktop, Cursor, Copilot Chat, or a custom agent — can manage devices, contacts, campaigns, templates, scheduling, and analytics through natural language, instead of the dashboard.
 
 This is a thin client: it does **no auth of its own**. It just forwards calls to the already-running bot server, which is why the bot must be activated (license key entered) and have at least one linked WhatsApp session before these tools do anything useful — that's the same gate the dashboard has.
 
 ## Prerequisites
 
-- The Srotas WhatsApp Bot server is running (desktop app open, `npm run dev`, or the Docker container) and reachable, default `http://localhost:3000`.
+- The AJM WhatsApp Bot server is running (desktop app open, `npm run dev`, or the Docker container) and reachable, default `http://localhost:3000`.
 - The license is activated and at least one WhatsApp session is linked (`ready`), for anything that sends messages.
 
 ## Install

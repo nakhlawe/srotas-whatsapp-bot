@@ -48,7 +48,7 @@ export function Updates() {
         <div className="p-4 sm:p-6 xl:p-8 max-w-[800px] mx-auto space-y-5 w-full">
             <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }}>
                 <h1 className="text-2xl font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Software Updates</h1>
-                <p className="text-sm text-muted-foreground mt-0.5">Check for and download the latest versions of Srotas.bot</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Check for and download the latest versions of AJM.bot</p>
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4, ease }}>
@@ -144,7 +144,7 @@ export function Updates() {
                                         <li>Download the installer file for your operating system.</li>
                                         <li>Run the installer and follow the setup wizard.</li>
                                         <li>Your existing data (sessions, templates, contacts) will be automatically preserved.</li>
-                                        <li>If you run into issues, completely close Srotas.bot from the system tray before running the installer again.</li>
+                                        <li>If you run into issues, completely close AJM.bot from the system tray before running the installer again.</li>
                                     </ol>
                                 </div>
                             </div>

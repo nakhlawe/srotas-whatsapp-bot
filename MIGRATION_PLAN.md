@@ -23,7 +23,7 @@
 ## 1. Project Context
 
 ### What this project does
-**Srotas WhatsApp Bot** is a multi-session WhatsApp automation tool with:
+**AJM WhatsApp Bot** is a multi-session WhatsApp automation tool with:
 - A **Node.js/Express backend** (`server.js`) serving a REST API + Socket.IO for real-time updates
 - A **Next.js frontend** (statically exported to `/public`) providing the dashboard UI
 - An **Electron wrapper** (`main.js`) for Windows/Mac desktop distribution
@@ -392,7 +392,7 @@ This is the definitive mapping between `whatsapp-web.js` and `@whiskeysockets/ba
 
 - [x] **4.6** Test Docker build
   ```bash
-  docker build -t srotas-bot:baileys .
+  docker build -t ajm-bot:baileys .
   ```
   > ✅ Built successfully (`srotas-bot:baileys`, 87.9MB content size)
 
@@ -513,7 +513,7 @@ timeout 10 node server.js || true
 ### 8.2 Memory Verification (Windows)
 1. Open Task Manager → Details tab
 2. Start the Electron app
-3. Note total memory of ALL `Srotas WhatsApp Bot` and `node.exe` processes
+3. Note total memory of ALL `AJM WhatsApp Bot` and `node.exe` processes
 4. Connect 1 WhatsApp session
 5. Compare memory:
    - **Before migration**: Expect ~500-600 MB total
@@ -527,9 +527,9 @@ timeout 10 node server.js || true
 
 ### 8.4 Docker
 ```bash
-docker build -t srotas-bot:baileys .
-docker images | grep srotas-bot  # Compare image size
-docker run -p 3000:3000 srotas-bot:baileys
+docker build -t ajm-bot:baileys .
+docker images | grep ajm-bot  # Compare image size
+docker run -p 3000:3000 ajm-bot:baileys
 # Should start in <5 seconds, memory <100 MB
 ```
 

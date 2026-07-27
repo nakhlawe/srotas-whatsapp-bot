@@ -1,11 +1,11 @@
 ---
-name: srotas-release-workflow
-description: Standard operating procedure for merging changes and creating a new release of Srotas WhatsApp Bot
+name: ajm-release-workflow
+description: Standard operating procedure for merging changes and creating a new release of AJM WhatsApp Bot
 ---
 
-# Srotas WhatsApp Bot - Release Workflow
+# AJM WhatsApp Bot - Release Workflow
 
-This skill outlines the exact procedure an agent should follow when the user asks to "merge to main", "make a release", or "publish a new version" of the Srotas WhatsApp Bot.
+This skill outlines the exact procedure an agent should follow when the user asks to "merge to main", "make a release", or "publish a new version" of the AJM WhatsApp Bot.
 
 ## When to use
 
@@ -47,6 +47,6 @@ The pipeline will:
 1. Spin up macOS and Windows runner environments.
 2. Build the Next.js frontend (`npm run build:ui`).
 3. Compile the Electron application using `electron-builder`.
-4. Automatically draft and publish a GitHub Release containing `SrotasBot.exe` and `SrotasBot.dmg`.
+4. Automatically draft and publish a GitHub Release containing `AJMBot.exe` and `AJMBot.dmg`.
 
 Because the dashboard checks the GitHub API, the new download buttons will automatically appear in the user's Settings page once the workflow completes!

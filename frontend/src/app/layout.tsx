@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-display", weight: ["300", "400", "500", "600", "700"] });
 
 export const metadata: Metadata = {
-  title: "Srotas.bot",
+  title: "AJM.bot",
   description: "WhatsApp Bot Dashboard",
 };
 
