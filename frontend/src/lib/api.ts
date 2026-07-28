@@ -105,3 +105,39 @@ export const uploadCompanyLogo = (formData: FormData) => api.post('/settings/log
     headers: { 'Content-Type': 'multipart/form-data' }
 }).then(r => r.data);
 export const deleteCompanyLogo = () => api.delete('/settings/logo').then(r => r.data);
+
+// Blacklist
+export const getBlacklist = (search?: string) => api.get('/blacklist', { params: search ? { search } : {} }).then(r => r.data);
+export const addBlacklist = (phone: string, reason?: string) => api.post('/blacklist', { phone, reason }).then(r => r.data);
+export const removeBlacklist = (id: string) => api.delete(`/blacklist/${id}`).then(r => r.data);
+export const importBlacklist = (phones: string[], reason?: string) => api.post('/blacklist/import', { phones, reason }).then(r => r.data);
+
+// DND (Do Not Disturb)
+export const getDndSettings = () => api.get('/settings/dnd').then(r => r.data);
+export const updateDndSettings = (data: any) => api.put('/settings/dnd', data).then(r => r.data);
+
+// Webhooks
+export const getWebhooks = () => api.get('/webhooks').then(r => r.data);
+export const addWebhook = (data: any) => api.post('/webhooks', data).then(r => r.data);
+export const updateWebhook = (id: string, data: any) => api.put(`/webhooks/${id}`, data).then(r => r.data);
+export const deleteWebhook = (id: string) => api.delete(`/webhooks/${id}`).then(r => r.data);
+export const testWebhook = (id: string) => api.post(`/webhooks/${id}/test`).then(r => r.data);
+export const getWebhookEvents = () => api.get('/webhooks/events').then(r => r.data);
+
+// Follow-ups
+export const getFollowUps = (status?: string) => api.get('/follow-ups', { params: status ? { status } : {} }).then(r => r.data);
+export const getFollowUpStats = () => api.get('/follow-ups/stats').then(r => r.data);
+export const addFollowUp = (data: any) => api.post('/follow-ups', data).then(r => r.data);
+export const updateFollowUp = (id: string, data: any) => api.put(`/follow-ups/${id}`, data).then(r => r.data);
+export const deleteFollowUp = (id: string) => api.delete(`/follow-ups/${id}`).then(r => r.data);
+export const runFollowUp = (id: string) => api.post(`/follow-ups/${id}/run`).then(r => r.data);
+
+// WhatsApp Group Management
+export const getWaGroups = (sessionId: string) => api.get(`/contacts/wa-groups/${sessionId}`).then(r => r.data);
+export const getWaGroupParticipants = (sessionId: string, groupId: string) => api.get(`/contacts/grab-group/${sessionId}/${groupId}`).then(r => r.data);
+export const createWaGroup = (sessionId: string, name: string, participants: string[]) => api.post('/wa-groups/create', { sessionId, name, participants }).then(r => r.data);
+export const addWaGroupMembers = (groupId: string, sessionId: string, participants: string[]) => api.post(`/wa-groups/${groupId}/add`, { sessionId, participants }).then(r => r.data);
+export const removeWaGroupMembers = (groupId: string, sessionId: string, participants: string[]) => api.post(`/wa-groups/${groupId}/remove`, { sessionId, participants }).then(r => r.data);
+export const renameWaGroup = (groupId: string, sessionId: string, name: string) => api.put(`/wa-groups/${groupId}/rename`, { sessionId, name }).then(r => r.data);
+export const leaveWaGroup = (groupId: string, sessionId: string) => api.post(`/wa-groups/${groupId}/leave`, { sessionId }).then(r => r.data);
+export const getWaGroupInvite = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/invite`, { params: { sessionId } }).then(r => r.data);

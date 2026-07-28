@@ -14,6 +14,10 @@ import {
     HelpCircle,
     Shield,
     MessageSquareMore,
+    Ban,
+    Globe,
+    Clock,
+    UsersRound,
     Sun,
     Moon,
     ChevronRight
@@ -34,6 +38,10 @@ const NAV_ITEMS = [
     { id: 'scheduler', label: 'Scheduler', icon: CalendarClock },
     { id: 'templates', label: 'Templates', icon: FileText },
     { id: 'quickreplies', label: 'Quick Replies', icon: Zap },
+    { id: 'blacklist', label: 'Blacklist', icon: Ban },
+    { id: 'groups', label: 'Groups', icon: UsersRound },
+    { id: 'webhooks', label: 'Webhooks', icon: Globe },
+    { id: 'follow-ups', label: 'Follow-ups', icon: Clock },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'help', label: 'Help', icon: HelpCircle },
 ];

@@ -1,7 +1,7 @@
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const memory = require('../ai/memory');
 const { generateReply } = require('../ai/provider');
-const { sessions: sessionDb, quickReplies: quickRepliesDb, campaigns: campaignsDb, autoReplyLogs, settings: settingsDb } = require('../db/database');
+const { sessions: sessionDb, quickReplies: quickRepliesDb, campaigns: campaignsDb, autoReplyLogs, settings: settingsDb, blacklist: blacklistDb } = require('../db/database');
 const sessionManager = require('./sessionManager');
 const fs = require('fs');
 const path = require('path');
@@ -41,6 +41,28 @@ function refreshSettings() {
         typingDelayMax: parseInt(settingsDb.get('anti_ban_typing_delay_max')) || 6,
     };
     return _cachedSettings;
+}
+
+function isDndActive() {
+    const enabled = settingsDb.get('dnd_enabled');
+    if (enabled !== '1' && enabled !== 'true') return false;
+    const startTime = settingsDb.get('dnd_start_time') || '22:00';
+    const endTime = settingsDb.get('dnd_end_time') || '08:00';
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    if (startMinutes > endMinutes) return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+}
+
+// ─── Webhook Notifier (lazy-loaded from server.js export) ───
+let _notifyWebhooks = null;
+function notifyWebhooks(event, data) {
+    // Webhooks are notified from server.js; this is a no-op placeholder
+    // to keep the interface consistent for future direct-from-handler notifications
 }
 
 async function simulateTypingDelay(sock, jid) {
@@ -95,6 +117,255 @@ function checkCampaignButtonReply(contactPhone, content) {
         }
     }
     return null;
+}
+
+// ═══════════════════════════════════════
+// Chat Commands — Group Management
+// ═══════════════════════════════════════
+
+function getAdminPhones() {
+    const raw = settingsDb.get('admin_phones') || '';
+    return raw.split(',').map(p => p.replace(/[^0-9]/g, '').trim()).filter(Boolean);
+}
+
+function isAdmin(phone) {
+    const admins = getAdminPhones();
+    if (admins.length === 0) return true; // If no admin configured, allow all
+    return admins.includes(phone.replace(/[^0-9]/g, ''));
+}
+
+function findGroupByName(groups, name) {
+    const lower = name.toLowerCase().trim();
+    return groups.find(g => g.name.toLowerCase().trim() === lower);
+}
+
+async function handleChatCommand(sessionId, contactPhone, jid, content, sock, msg) {
+    // Only admins can use commands
+    if (!isAdmin(contactPhone)) {
+        await sock.sendMessage(jid, { text: 'You are not authorized to use commands.' }, { quoted: msg });
+        return true;
+    }
+
+    const parts = content.replace(/^[\/!]/, '').trim().split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const args = parts.slice(1);
+
+    try {
+        switch (cmd) {
+            // ─── /groups — List all WhatsApp groups ───
+            case 'groups': {
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                if (!groups.length) {
+                    await sock.sendMessage(jid, { text: 'No WhatsApp groups found.' }, { quoted: msg });
+                } else {
+                    let text = `*WhatsApp Groups (${groups.length})*\n\n`;
+                    groups.forEach((g, i) => {
+                        text += `${i + 1}. ${g.name}\n   Members: ${g.participantCount}\n   ID: ${g.id}\n\n`;
+                    });
+                    await sock.sendMessage(jid, { text }, { quoted: msg });
+                }
+                return true;
+            }
+
+            // ─── /members <group name> — List group members ───
+            case 'members': {
+                const groupName = args.join(' ');
+                if (!groupName) {
+                    await sock.sendMessage(jid, { text: 'Usage: /members <group name>' }, { quoted: msg });
+                    return true;
+                }
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                const group = findGroupByName(groups, groupName);
+                if (!group) {
+                    await sock.sendMessage(jid, { text: `Group "${groupName}" not found. Use /groups to see all groups.` }, { quoted: msg });
+                    return true;
+                }
+                const participants = await sessionManager.getGroupParticipants(sessionId, group.id);
+                let text = `*${group.name}* — ${participants.length} members\n\n`;
+                participants.forEach((p, i) => {
+                    text += `${i + 1}. ${p.name || p.phone} (${p.phone})\n`;
+                });
+                await sock.sendMessage(jid, { text }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /add <phone> <group name> — Add member to group ───
+            case 'add': {
+                if (args.length < 2) {
+                    await sock.sendMessage(jid, { text: 'Usage: /add <phone> <group name>\nExample: /add 919876543210 Sales Team' }, { quoted: msg });
+                    return true;
+                }
+                const phone = args[0].replace(/[^0-9]/g, '');
+                const gName = args.slice(1).join(' ');
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                const group = findGroupByName(groups, gName);
+                if (!group) {
+                    await sock.sendMessage(jid, { text: `Group "${gName}" not found. Use /groups to see all groups.` }, { quoted: msg });
+                    return true;
+                }
+                await sock.sendMessage(jid, { text: `Adding ${phone} to ${group.name}...` }, { quoted: msg });
+                const result = await sessionManager.addGroupParticipants(sessionId, group.id, [phone]);
+                const status = result && result[0] ? result[0].status : 'unknown';
+                await sock.sendMessage(jid, { text: `Result: ${phone} → ${group.name}\nStatus: ${status}` }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /remove <phone> <group name> — Remove member from group ───
+            case 'remove': {
+                if (args.length < 2) {
+                    await sock.sendMessage(jid, { text: 'Usage: /remove <phone> <group name>\nExample: /remove 919876543210 Sales Team' }, { quoted: msg });
+                    return true;
+                }
+                const phone = args[0].replace(/[^0-9]/g, '');
+                const gName = args.slice(1).join(' ');
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                const group = findGroupByName(groups, gName);
+                if (!group) {
+                    await sock.sendMessage(jid, { text: `Group "${gName}" not found. Use /groups to see all groups.` }, { quoted: msg });
+                    return true;
+                }
+                await sock.sendMessage(jid, { text: `Removing ${phone} from ${group.name}...` }, { quoted: msg });
+                const result = await sessionManager.removeGroupParticipants(sessionId, group.id, [phone]);
+                const status = result && result[0] ? result[0].status : 'unknown';
+                await sock.sendMessage(jid, { text: `Result: ${phone} removed from ${group.name}\nStatus: ${status}` }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /create <group name> <phone1, phone2, ...> — Create new group ───
+            case 'create': {
+                if (args.length < 2) {
+                    await sock.sendMessage(jid, { text: 'Usage: /create <group name> <phone1, phone2, ...>\nExample: /create Sales Team 919876543210,919876543211' }, { quoted: msg });
+                    return true;
+                }
+                const gName = args[0];
+                const phones = args.slice(1).join(',').split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+                if (phones.length === 0) {
+                    await sock.sendMessage(jid, { text: 'Please provide at least one phone number.' }, { quoted: msg });
+                    return true;
+                }
+                await sock.sendMessage(jid, { text: `Creating group "${gName}" with ${phones.length} members...` }, { quoted: msg });
+                const result = await sessionManager.createGroup(sessionId, gName, phones);
+                await sock.sendMessage(jid, { text: `Group created!\nName: ${result.name}\nID: ${result.id}\nMembers: ${result.participants}` }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /rename <group name> <new name> — Rename a group ───
+            case 'rename': {
+                if (args.length < 2) {
+                    await sock.sendMessage(jid, { text: 'Usage: /rename <current name> <new name>' }, { quoted: msg });
+                    return true;
+                }
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                // Try to find group name: first word(s) up to the last word as new name
+                let group = null;
+                let newName = '';
+                for (let i = args.length - 1; i >= 1; i--) {
+                    const tryName = args.slice(0, i).join(' ');
+                    group = findGroupByName(groups, tryName);
+                    if (group) {
+                        newName = args.slice(i).join(' ');
+                        break;
+                    }
+                }
+                if (!group) {
+                    await sock.sendMessage(jid, { text: 'Group not found. Use /groups to see all groups.' }, { quoted: msg });
+                    return true;
+                }
+                await sessionManager.renameGroup(sessionId, group.id, newName);
+                await sock.sendMessage(jid, { text: `Group renamed: "${group.name}" → "${newName}"` }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /leave <group name> — Leave a group ───
+            case 'leave': {
+                const gName = args.join(' ');
+                if (!gName) {
+                    await sock.sendMessage(jid, { text: 'Usage: /leave <group name>' }, { quoted: msg });
+                    return true;
+                }
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                const group = findGroupByName(groups, gName);
+                if (!group) {
+                    await sock.sendMessage(jid, { text: `Group "${gName}" not found.` }, { quoted: msg });
+                    return true;
+                }
+                await sessionManager.leaveGroup(sessionId, group.id);
+                await sock.sendMessage(jid, { text: `Left group: ${group.name}` }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /invite <group name> — Get invite link ───
+            case 'invite': {
+                const gName = args.join(' ');
+                if (!gName) {
+                    await sock.sendMessage(jid, { text: 'Usage: /invite <group name>' }, { quoted: msg });
+                    return true;
+                }
+                const groups = await sessionManager.getWhatsAppGroups(sessionId);
+                const group = findGroupByName(groups, gName);
+                if (!group) {
+                    await sock.sendMessage(jid, { text: `Group "${gName}" not found.` }, { quoted: msg });
+                    return true;
+                }
+                const code = await sessionManager.getGroupInviteCode(sessionId, group.id);
+                await sock.sendMessage(jid, { text: `Invite link for ${group.name}:\nhttps://chat.whatsapp.com/${code}` }, { quoted: msg });
+                return true;
+            }
+
+            // ─── /admin <phone1, phone2, ...> — Set admin phones ───
+            case 'admin': {
+                if (args.length === 0) {
+                    const current = getAdminPhones();
+                    await sock.sendMessage(jid, {
+                        text: current.length
+                            ? `Current admins: ${current.join(', ')}\n\nUsage: /admin phone1,phone2\nUse /admin clear to remove all.`
+                            : 'No admins set — all users can use commands.\n\nUsage: /admin phone1,phone2'
+                    }, { quoted: msg });
+                    return true;
+                }
+                if (args[0] === 'clear') {
+                    settingsDb.set('admin_phones', '');
+                    await sock.sendMessage(jid, { text: 'Admin list cleared — all users can now use commands.' }, { quoted: msg });
+                } else {
+                    const phones = args.join(',').split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+                    settingsDb.set('admin_phones', phones.join(','));
+                    await sock.sendMessage(jid, { text: `Admins set to: ${phones.join(', ')}` }, { quoted: msg });
+                }
+                return true;
+            }
+
+            // ─── /help — Show all commands ───
+            case 'help': {
+                const helpText = `*AJM.bot Group Commands*
+
+/groups — List all WhatsApp groups
+/members <group> — List group members
+/add <phone> <group> — Add member
+/remove <phone> <group> — Remove member
+/create <group> <phones> — Create group
+/rename <group> <new name> — Rename group
+/leave <group> — Leave a group
+/invite <group> — Get invite link
+/admin — Manage admin phones
+/help — Show this help
+
+*Notes:*
+- Commands work from any chat with the bot
+- Only admins can use commands
+- Rate limit: 5 actions per minute
+- Use group name exactly as shown in /groups`;
+                await sock.sendMessage(jid, { text: helpText }, { quoted: msg });
+                return true;
+            }
+
+            default:
+                return false; // Unknown command — let it fall through to AI
+        }
+    } catch (err) {
+        console.error(`[ChatCommand] Error executing /${cmd}:`, err.message);
+        await sock.sendMessage(jid, { text: `Error: ${err.message}` }, { quoted: msg });
+        return true;
+    }
 }
 
 function init() {
@@ -219,9 +490,27 @@ function init() {
                 return;
             }
 
+            // ─── Chat Command Handler (Group Management) ───
+            if (content && (content.startsWith('/') || content.startsWith('!'))) {
+                const cmdHandled = await handleChatCommand(sessionId, contactPhone, jid, content.trim(), sock, msg);
+                if (cmdHandled) return;
+            }
+
             // ─── Master Auto-Reply Switch Check ───
             if (!session.auto_reply) {
                 console.log(`[AutoReply] Master switch is OFF for session ${sessionId} - skipping all responses`);
+                return;
+            }
+
+            // ─── Blacklist Check ───
+            if (blacklistDb.isBlacklisted(contactPhone)) {
+                console.log(`[Blacklist] ${maskPhone(contactPhone)} is blacklisted — ignoring message`);
+                return;
+            }
+
+            // ─── DND Check ───
+            if (isDndActive()) {
+                console.log(`[DND] Do Not Disturb active — ignoring message from ${maskPhone(contactPhone)}`);
                 return;
             }
 
@@ -388,6 +677,11 @@ function init() {
                 // Store outgoing message
                 memory.addMessage(contactPhone, 'out', reply.trim(), sessionId);
                 console.log(`[AutoReply → ${maskPhone(contactPhone)}] ${reply.trim().substring(0, 80)}...`);
+
+                // Notify webhooks
+                notifyWebhooks('message.received', {
+                    phone: contactPhone, content, reply: reply.trim(), sessionId, type: 'ai'
+                });
 
                 // Log AI reply analytics
                 try {

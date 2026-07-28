@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { getSettings, updateSettings, getLicenseStatus, deactivateLicense, uploadCompanyLogo, deleteCompanyLogo } from '@/lib/api';
+import { getSettings, updateSettings, getLicenseStatus, deactivateLicense, uploadCompanyLogo, deleteCompanyLogo, getDndSettings, updateDndSettings } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Brain, Palette, KeyRound, Save, Infinity, Eye, EyeOff, CheckCircle, Sun, Moon, Cpu, Settings2, LogOut, ShieldCheck, ImagePlus, Trash2, RotateCcw, Sparkles } from 'lucide-react';
+import { Brain, Palette, KeyRound, Save, Infinity, Eye, EyeOff, CheckCircle, Sun, Moon, Cpu, Settings2, LogOut, ShieldCheck, ImagePlus, Trash2, RotateCcw, Sparkles, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ease = [0.25, 0.46, 0.45, 0.94] as const;
@@ -51,6 +51,9 @@ export function Settings() {
     const [logoVersion, setLogoVersion] = useState(0); // Cache-buster for logo preview
     const [logoUploading, setLogoUploading] = useState(false);
     const logoInputRef = React.useRef<HTMLInputElement>(null);
+    const [dndEnabled, setDndEnabled] = useState(false);
+    const [dndStartTime, setDndStartTime] = useState('22:00');
+    const [dndEndTime, setDndEndTime] = useState('08:00');
 
     const DEFAULT_IMAGE_PROMPT = `You are a world-class commercial photographer, CGI director, and graphic designer specializing in premium Indian brand campaigns. Your work appears in Forbes India, Vogue India, and campaigns for Tata, Mahindra, and Reliance.
 
@@ -128,12 +131,18 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
             setHasLogo(!!s.has_company_logo);
         }).catch(console.error);
         getLicenseStatus().then(setLicense).catch(console.error);
+        getDndSettings().then(d => {
+            setDndEnabled(d.enabled);
+            setDndStartTime(d.startTime);
+            setDndEndTime(d.endTime);
+        }).catch(console.error);
     }, []);
 
     const handleSave = async () => {
         setSaving(true);
         try {
             await updateSettings(settings);
+            await updateDndSettings({ enabled: dndEnabled, startTime: dndStartTime, endTime: dndEndTime });
             toast.success('Settings saved successfully');
         } catch {
             toast.error('Failed to save settings');
@@ -519,6 +528,53 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
                                                     onChange={e => setSettings({ ...settings, anti_ban_typing_delay_max: e.target.value })}
                                                     placeholder="Max"
                                                     className="bg-secondary/30 font-mono h-8 text-xs"
+                                                />
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                )}
+                            </Card>
+
+                            {/* Do Not Disturb */}
+                            <Card className="card-glow border-amber-500/30 bg-amber-500/5 shadow-sm md:col-span-2">
+                                <CardHeader className="pb-4 pt-5 px-5 border-b border-border/30">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-base flex items-center gap-2.5 font-semibold text-amber-600 dark:text-amber-400">
+                                            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-500/20">
+                                                <Bell className="w-4 h-4 text-amber-500" />
+                                            </div>
+                                            Do Not Disturb (DND)
+                                        </CardTitle>
+                                        <Switch
+                                            checked={dndEnabled}
+                                            onCheckedChange={setDndEnabled}
+                                        />
+                                    </div>
+                                    <CardDescription className="text-[11px] mt-1">
+                                        Pause all auto-replies and follow-ups during specified hours.
+                                    </CardDescription>
+                                </CardHeader>
+                                {dndEnabled && (
+                                    <CardContent className="p-5">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div className="space-y-1.5 bg-background/50 border border-border/50 rounded-lg p-3">
+                                                <Label className="text-xs font-semibold text-foreground/90">Start Time</Label>
+                                                <p className="text-[10px] text-muted-foreground">Auto-replies stop at this time</p>
+                                                <Input
+                                                    type="time"
+                                                    value={dndStartTime}
+                                                    onChange={e => setDndStartTime(e.target.value)}
+                                                    className="bg-secondary/30 font-mono h-8 text-xs mt-1"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5 bg-background/50 border border-border/50 rounded-lg p-3">
+                                                <Label className="text-xs font-semibold text-foreground/90">End Time</Label>
+                                                <p className="text-[10px] text-muted-foreground">Auto-replies resume at this time</p>
+                                                <Input
+                                                    type="time"
+                                                    value={dndEndTime}
+                                                    onChange={e => setDndEndTime(e.target.value)}
+                                                    className="bg-secondary/30 font-mono h-8 text-xs mt-1"
                                                 />
                                             </div>
                                         </div>

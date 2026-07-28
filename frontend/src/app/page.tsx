@@ -15,6 +15,10 @@ import { Settings } from './settings';
 import { Admin } from './admin';
 import { Help } from './help';
 import { Updates } from './updates';
+import { Blacklist } from './blacklist';
+import { Webhooks } from './webhooks';
+import { FollowUps } from './follow-ups';
+import { GroupController } from './groups';
 import { getLicenseStatus, activateLicense } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -182,6 +186,10 @@ export default function Home() {
             {activePage === 'scheduler' && <Scheduler />}
             {activePage === 'templates' && <Templates />}
             {activePage === 'quickreplies' && <QuickReplies />}
+            {activePage === 'blacklist' && <Blacklist />}
+            {activePage === 'webhooks' && <Webhooks />}
+            {activePage === 'follow-ups' && <FollowUps />}
+            {activePage === 'groups' && <GroupController />}
             {activePage === 'settings' && <Settings />}
             {activePage === 'help' && <Help />}
             {activePage === 'admin' && <Admin />}

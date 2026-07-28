@@ -1,7 +1,8 @@
 const sessionManager = require('../whatsapp/sessionManager');
-const { messages: messagesDb, campaigns: campaignsDb } = require('../db/database');
+const { messages: messagesDb, campaigns: campaignsDb, blacklist: blacklistDb, settings: settingsDb } = require('../db/database');
 const path = require('path');
 const fs = require('fs');
+const followUpEngine = require('./followUpEngine');
 
 let io = null;
 const SEND_TIMEOUT_MS = 30000; // 30 second timeout per message
@@ -169,6 +170,38 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
             const contact = contacts[i];
             console.log(`[BulkSender] Processing contact ${i + 1}/${contacts.length}: ${contact.phone}`);
 
+            // ─── Blacklist Check: skip blacklisted numbers ───
+            if (blacklistDb.isBlacklisted(String(contact.phone).replace(/[^0-9]/g, ''))) {
+                console.log(`[BulkSender] ${contact.phone} is blacklisted — skipping`);
+                failed++;
+                campaignsDb.addMessage(activeCampaignId, contact.phone, contact.name, 'failed', 'Number is blacklisted', '');
+                campaignsDb.incrementFailed(activeCampaignId);
+                if (io) {
+                    io.emit('bulk:progress', {
+                        campaignId: activeCampaignId, sessionId,
+                        current: i + 1, total: contacts.length, sent, failed,
+                        lastPhone: contact.phone, lastName: contact.name, lastStatus: 'failed', error: 'Blacklisted',
+                    });
+                }
+                continue;
+            }
+
+            // ─── DND Check: skip if Do Not Disturb is active ───
+            if (followUpEngine.isDndActive()) {
+                console.log(`[BulkSender] DND active — skipping ${contact.phone}`);
+                failed++;
+                campaignsDb.addMessage(activeCampaignId, contact.phone, contact.name, 'failed', 'DND active', '');
+                campaignsDb.incrementFailed(activeCampaignId);
+                if (io) {
+                    io.emit('bulk:progress', {
+                        campaignId: activeCampaignId, sessionId,
+                        current: i + 1, total: contacts.length, sent, failed,
+                        lastPhone: contact.phone, lastName: contact.name, lastStatus: 'failed', error: 'DND active',
+                    });
+                }
+                continue;
+            }
+
             // Re-check session is still connected before each send
             const currentSock = sessionManager.getClient(sessionId);
             if (!currentSock) {
@@ -321,6 +354,23 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
 
     // Mark campaign complete (always runs, even after crash)
     campaignsDb.complete(activeCampaignId);
+
+    // Notify webhooks about campaign completion
+    try {
+        const { webhooks: webhooksDb } = require('../db/database');
+        const hooks = webhooksDb.getEnabled();
+        for (const hook of hooks) {
+            let events;
+            try { events = JSON.parse(hook.events); } catch (e) { events = []; }
+            if (!events.includes('campaign.completed')) continue;
+            const payload = { event: 'campaign.completed', timestamp: new Date().toISOString(), data: { campaignId: activeCampaignId, sessionId, sent, failed, total: contacts.length } };
+            fetch(hook.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Webhook-Source': 'ajm-bot' },
+                body: JSON.stringify(payload),
+            }).then(resp => webhooksDb.recordTrigger(hook.id, resp.status)).catch(() => webhooksDb.recordTrigger(hook.id, 0));
+        }
+    } catch (e) { /* non-critical */ }
 
     if (io) {
         io.emit('bulk:complete', { campaignId: activeCampaignId, sessionId, sent, failed, total: contacts.length });

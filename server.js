@@ -30,7 +30,7 @@ const bulkSender = require('./src/messaging/bulkSender');
 const scheduler = require('./src/messaging/scheduler');
 const importer = require('./src/contacts/importer');
 const license = require('./src/license');
-const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs } = require('./src/db/database');
+const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb } = require('./src/db/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -70,6 +70,43 @@ sessionManager.init(io);
 bulkSender.init(io);
 messageHandler.init();
 scheduler.init(io);
+
+// ─── Webhook Notifier ───
+async function notifyWebhooks(event, data) {
+    try {
+        const hooks = webhooksDb.getEnabled();
+        for (const hook of hooks) {
+            let events;
+            try { events = JSON.parse(hook.events); } catch (e) { events = []; }
+            if (!events.includes(event)) continue;
+
+            const payload = { event, timestamp: new Date().toISOString(), data };
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            fetch(hook.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Webhook-Source': 'ajm-bot',
+                    ...(hook.secret ? { 'X-Webhook-Secret': hook.secret } : {}),
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            }).then(resp => {
+                clearTimeout(timeout);
+                webhooksDb.recordTrigger(hook.id, resp.status);
+            }).catch(() => {
+                clearTimeout(timeout);
+                webhooksDb.recordTrigger(hook.id, 0);
+            });
+        }
+    } catch (e) { /* non-critical */ }
+}
+
+// ─── Follow-up Engine ───
+const followUpEngine = require('./src/messaging/followUpEngine');
+followUpEngine.init(io, notifyWebhooks);
+followUpEngine.start();
 
 // ═══════════════════════════════════════
 // API ROUTES — License & Activation
@@ -515,6 +552,114 @@ app.get('/api/contacts/debug-group/:sessionId/:groupId', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// ═══════════════════════════════════════
+// API ROUTES — WhatsApp Group Management
+// ═══════════════════════════════════════
+
+app.post('/api/wa-groups/create', async (req, res) => {
+    try {
+        const { sessionId, name, participants } = req.body;
+        if (!sessionId || !name || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId, name, and participants (array of phone numbers) are required' });
+        }
+        const result = await sessionManager.createGroup(sessionId, name, participants);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/add', async (req, res) => {
+    try {
+        const { sessionId, participants } = req.body;
+        if (!sessionId || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId and participants are required' });
+        }
+        const result = await sessionManager.addGroupParticipants(sessionId, req.params.groupId, participants);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/remove', async (req, res) => {
+    try {
+        const { sessionId, participants } = req.body;
+        if (!sessionId || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId and participants are required' });
+        }
+        const result = await sessionManager.removeGroupParticipants(sessionId, req.params.groupId, participants);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/promote', async (req, res) => {
+    try {
+        const { sessionId, participants } = req.body;
+        const result = await sessionManager.promoteGroupParticipants(sessionId, req.params.groupId, participants);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/demote', async (req, res) => {
+    try {
+        const { sessionId, participants } = req.body;
+        const result = await sessionManager.demoteGroupParticipants(sessionId, req.params.groupId, participants);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/wa-groups/:groupId/rename', async (req, res) => {
+    try {
+        const { sessionId, name } = req.body;
+        if (!sessionId || !name) return res.status(400).json({ error: 'sessionId and name are required' });
+        await sessionManager.renameGroup(sessionId, req.params.groupId, name);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/wa-groups/:groupId/description', async (req, res) => {
+    try {
+        const { sessionId, description } = req.body;
+        await sessionManager.updateGroupDescription(sessionId, req.params.groupId, description);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/leave', async (req, res) => {
+    try {
+        const { sessionId } = req.body;
+        await sessionManager.leaveGroup(sessionId, req.params.groupId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-groups/:groupId/invite', async (req, res) => {
+    try {
+        const { sessionId } = req.query;
+        const code = await sessionManager.getGroupInviteCode(sessionId, req.params.groupId);
+        res.json({ inviteCode: code, inviteLink: `https://chat.whatsapp.com/${code}` });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-groups/rate-limit', (req, res) => {
+    res.json({ count: sessionManager.getGroupActionCount(), limit: 5, window: '1 minute' });
 });
 
 app.delete('/api/contacts/:id', (req, res) => {
@@ -1392,11 +1537,12 @@ CRITICAL INSTRUCTIONS FOR AI:
         anti_ban_typing_delay_max: all.anti_ban_typing_delay_max || '6',
         has_company_logo: !!(all.company_logo_path && fs.existsSync(all.company_logo_path)),
         image_generation_prompt: all.image_generation_prompt || '',
+        admin_phones: all.admin_phones || '',
     });
 });
 
 app.put('/api/settings', (req, res) => {
-    const allowed = ['theme', 'ai_provider', 'ai_model', 'ai_image_model', 'ai_chat_history', 'ai_chat_history_limit', 'ai_use_system_prompt', 'system_prompt', 'image_generation_prompt', 'min_delay', 'max_delay', 'gemini_api_key', 'openai_api_key', 'anti_ban_enabled', 'anti_ban_ignore_bots', 'anti_ban_cooldown_sec', 'anti_ban_typing_delay_min', 'anti_ban_typing_delay_max'];
+    const allowed = ['theme', 'ai_provider', 'ai_model', 'ai_image_model', 'ai_chat_history', 'ai_chat_history_limit', 'ai_use_system_prompt', 'system_prompt', 'image_generation_prompt', 'min_delay', 'max_delay', 'gemini_api_key', 'openai_api_key', 'anti_ban_enabled', 'anti_ban_ignore_bots', 'anti_ban_cooldown_sec', 'anti_ban_typing_delay_min', 'anti_ban_typing_delay_max', 'admin_phones'];
     for (const key of allowed) {
         if (req.body[key] !== undefined && req.body[key] !== '••••••••') {
             settingsDb.set(key, req.body[key]);
@@ -1453,6 +1599,241 @@ app.put('/api/schedules/:id/toggle', (req, res) => {
 app.delete('/api/schedules/:id', (req, res) => {
     scheduler.remove(parseInt(req.params.id));
     res.json({ success: true });
+});
+
+// ═══════════════════════════════════════
+// API ROUTES — Blacklist
+// ═══════════════════════════════════════
+
+app.get('/api/blacklist', (req, res) => {
+    const { search } = req.query;
+    if (search) return res.json(blacklistDb.search(search));
+    res.json(blacklistDb.getAll());
+});
+
+app.post('/api/blacklist', (req, res) => {
+    try {
+        const { phone, reason } = req.body;
+        if (!phone || !phone.trim()) return res.status(400).json({ error: 'Phone number is required' });
+        blacklistDb.add(phone.trim().replace(/[^0-9+]/g, ''), reason || '', 'manual');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/blacklist/:id', (req, res) => {
+    try {
+        blacklistDb.removeById(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/blacklist/import', (req, res) => {
+    try {
+        const { phones, reason } = req.body;
+        if (!phones || !Array.isArray(phones) || !phones.length) {
+            return res.status(400).json({ error: 'Array of phone numbers is required' });
+        }
+        const cleaned = phones.map(p => String(p).replace(/[^0-9+]/g, '')).filter(Boolean);
+        const inserted = blacklistDb.importMany(cleaned, reason || 'bulk import', 'import');
+        res.json({ success: true, added: inserted, total: cleaned.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/blacklist/export', (req, res) => {
+    const rows = blacklistDb.getAll();
+    let csv = 'phone,reason,source,created_at\n';
+    for (const r of rows) {
+        const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+        csv += `${esc(r.phone)},${esc(r.reason)},${esc(r.source)},${esc(r.created_at)}\n`;
+    }
+    res.header('Content-Type', 'text/csv');
+    res.attachment(`blacklist-${Date.now()}.csv`);
+    return res.send(csv);
+});
+
+// ═══════════════════════════════════════
+// API ROUTES — DND (Do Not Disturb)
+// ═══════════════════════════════════════
+
+app.get('/api/settings/dnd', (req, res) => {
+    const enabled = settingsDb.get('dnd_enabled');
+    const startTime = settingsDb.get('dnd_start_time') || '22:00';
+    const endTime = settingsDb.get('dnd_end_time') || '08:00';
+    res.json({
+        enabled: enabled === '1' || enabled === 'true',
+        startTime,
+        endTime,
+    });
+});
+
+app.put('/api/settings/dnd', (req, res) => {
+    try {
+        const { enabled, startTime, endTime } = req.body;
+        if (enabled !== undefined) settingsDb.set('dnd_enabled', enabled ? '1' : '0');
+        if (startTime) settingsDb.set('dnd_start_time', startTime);
+        if (endTime) settingsDb.set('dnd_end_time', endTime);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ═══════════════════════════════════════
+// API ROUTES — Webhooks
+// ═══════════════════════════════════════
+
+app.get('/api/webhooks', (req, res) => {
+    res.json(webhooksDb.getAll());
+});
+
+app.post('/api/webhooks', (req, res) => {
+    try {
+        const { url, name, events, secret } = req.body;
+        if (!url || !url.trim()) return res.status(400).json({ error: 'Webhook URL is required' });
+        try { new URL(url); } catch (e) { return res.status(400).json({ error: 'Invalid URL format' }); }
+        webhooksDb.create(url.trim(), name || '', events || ['message.received'], secret || '');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/webhooks/:id', (req, res) => {
+    try {
+        webhooksDb.update(parseInt(req.params.id), req.body);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/webhooks/:id', (req, res) => {
+    try {
+        webhooksDb.delete(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/webhooks/:id/test', async (req, res) => {
+    try {
+        const hook = webhooksDb.getById(parseInt(req.params.id));
+        if (!hook) return res.status(404).json({ error: 'Webhook not found' });
+        const payload = { event: 'test', timestamp: new Date().toISOString(), data: { message: 'This is a test webhook from AJM.bot' } };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        try {
+            const resp = await fetch(hook.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Webhook-Source': 'ajm-bot' },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            webhooksDb.recordTrigger(hook.id, resp.status);
+            res.json({ success: resp.ok, status: resp.status });
+        } catch (fetchErr) {
+            clearTimeout(timeout);
+            webhooksDb.recordTrigger(hook.id, 0);
+            res.json({ success: false, status: 0, error: fetchErr.message });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/webhooks/events', (req, res) => {
+    res.json([
+        { key: 'message.received', label: 'Message Received' },
+        { key: 'message.sent', label: 'Message Sent' },
+        { key: 'campaign.started', label: 'Campaign Started' },
+        { key: 'campaign.completed', label: 'Campaign Completed' },
+        { key: 'session.status', label: 'Session Status Change' },
+    ]);
+});
+
+// ═══════════════════════════════════════
+// API ROUTES — Follow-ups
+// ═══════════════════════════════════════
+
+app.get('/api/follow-ups', (req, res) => {
+    const { status } = req.query;
+    let items = followUpsDb.getAll();
+    if (status === 'pending') items = items.filter(i => i.status === 'pending');
+    else if (status === 'sent') items = items.filter(i => i.status === 'sent');
+    else if (status === 'failed') items = items.filter(i => i.status === 'failed');
+
+    const sessions = sessionsDb.getAll();
+    const enriched = items.map(item => {
+        const session = sessions.find(s => s.id === item.session_id);
+        return { ...item, session_name: session ? session.name : 'Unknown' };
+    });
+    res.json(enriched);
+});
+
+app.get('/api/follow-ups/stats', (req, res) => {
+    res.json(followUpsDb.stats());
+});
+
+app.post('/api/follow-ups', (req, res) => {
+    try {
+        const { name, phone, sessionId, message, delayMinutes } = req.body;
+        if (!phone || !sessionId || !message) {
+            return res.status(400).json({ error: 'phone, sessionId, and message are required' });
+        }
+        if (!delayMinutes || delayMinutes < 1) {
+            return res.status(400).json({ error: 'delayMinutes must be at least 1' });
+        }
+        followUpsDb.create(name || 'Follow-up', phone.trim(), sessionId, message, parseInt(delayMinutes));
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/follow-ups/:id', (req, res) => {
+    try {
+        followUpsDb.update(parseInt(req.params.id), req.body);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/follow-ups/:id', (req, res) => {
+    try {
+        followUpsDb.delete(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/follow-ups/:id/run', async (req, res) => {
+    try {
+        const item = followUpsDb.getById(parseInt(req.params.id));
+        if (!item) return res.status(404).json({ error: 'Follow-up not found' });
+        if (item.status !== 'pending') return res.status(400).json({ error: 'Follow-up is not pending' });
+
+        const sock = sessionManager.getClient(item.session_id);
+        if (!sock) return res.status(400).json({ error: 'Session not connected' });
+
+        const phone = item.phone.replace(/[^0-9]/g, '');
+        const jid = `${phone}@s.whatsapp.net`;
+        await sock.sendMessage(jid, { text: item.message });
+        followUpsDb.markSent(item.id);
+        res.json({ success: true });
+    } catch (err) {
+        try { followUpsDb.markFailed(parseInt(req.params.id)); } catch (e) { }
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ═══════════════════════════════════════

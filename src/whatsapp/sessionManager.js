@@ -907,6 +907,134 @@ async function getGroupParticipants(sessionId, groupId) {
 }
 
 // ═══════════════════════════════════════
+// Group Management (write operations)
+// ═══════════════════════════════════════
+
+const groupActionTimestamps = []; // timestamps of recent group actions
+const GROUP_ACTION_LIMIT = 5;     // max actions per window
+const GROUP_ACTION_WINDOW = 60 * 1000; // 1 minute window
+
+function isGroupActionAllowed() {
+    const now = Date.now();
+    // Prune old timestamps
+    while (groupActionTimestamps.length > 0 && groupActionTimestamps[0] < now - GROUP_ACTION_WINDOW) {
+        groupActionTimestamps.shift();
+    }
+    if (groupActionTimestamps.length >= GROUP_ACTION_LIMIT) {
+        return false;
+    }
+    groupActionTimestamps.push(now);
+    return true;
+}
+
+function getGroupActionCount() {
+    const now = Date.now();
+    while (groupActionTimestamps.length > 0 && groupActionTimestamps[0] < now - GROUP_ACTION_WINDOW) {
+        groupActionTimestamps.shift();
+    }
+    return groupActionTimestamps.length;
+}
+
+async function createGroup(sessionId, subject, participants) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    // Format phone numbers to JIDs
+    const jids = participants.map(p => {
+        const clean = String(p).replace(/[^0-9]/g, '');
+        return `${clean}@s.whatsapp.net`;
+    });
+    const result = await sock.groupCreate(subject, jids);
+    return { id: result.id, name: result.subject, participants: jids.length };
+}
+
+async function addGroupParticipants(sessionId, groupId, participants) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    const jids = participants.map(p => {
+        const clean = String(p).replace(/[^0-9]/g, '');
+        return `${clean}@s.whatsapp.net`;
+    });
+    const result = await sock.groupParticipantsUpdate(groupId, jids, 'add');
+    return result;
+}
+
+async function removeGroupParticipants(sessionId, groupId, participants) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    const jids = participants.map(p => {
+        const clean = String(p).replace(/[^0-9]/g, '');
+        return `${clean}@s.whatsapp.net`;
+    });
+    const result = await sock.groupParticipantsUpdate(groupId, jids, 'remove');
+    return result;
+}
+
+async function promoteGroupParticipants(sessionId, groupId, participants) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    const jids = participants.map(p => {
+        const clean = String(p).replace(/[^0-9]/g, '');
+        return `${clean}@s.whatsapp.net`;
+    });
+    return await sock.groupParticipantsUpdate(groupId, jids, 'promote');
+}
+
+async function demoteGroupParticipants(sessionId, groupId, participants) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    const jids = participants.map(p => {
+        const clean = String(p).replace(/[^0-9]/g, '');
+        return `${clean}@s.whatsapp.net`;
+    });
+    return await sock.groupParticipantsUpdate(groupId, jids, 'demote');
+}
+
+async function renameGroup(sessionId, groupId, newSubject) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    return await sock.groupUpdateSubject(groupId, newSubject);
+}
+
+async function updateGroupDescription(sessionId, groupId, description) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    if (!isGroupActionAllowed()) {
+        throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
+    }
+    return await sock.groupUpdateDescription(groupId, description);
+}
+
+async function leaveGroup(sessionId, groupId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    return await sock.groupLeave(groupId);
+}
+
+async function getGroupInviteCode(sessionId, groupId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    return await sock.groupInviteCode(groupId);
+}
+
+// ═══════════════════════════════════════
 // Getters & Setters
 // ═══════════════════════════════════════
 
@@ -979,6 +1107,17 @@ module.exports = {
     onMessage,
     onVote,
     storePollMessage,
+    // Group management
+    createGroup,
+    addGroupParticipants,
+    removeGroupParticipants,
+    promoteGroupParticipants,
+    demoteGroupParticipants,
+    renameGroup,
+    updateGroupDescription,
+    leaveGroup,
+    getGroupInviteCode,
+    getGroupActionCount,
     // Utility exports for other modules
     extractMessageText,
     getMessageType,

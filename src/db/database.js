@@ -148,6 +148,44 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_phone ON messages(contact_phone);
   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
   CREATE INDEX IF NOT EXISTS idx_auto_reply_logs_type ON auto_reply_logs(type, timestamp);
+
+  CREATE TABLE IF NOT EXISTS blacklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT NOT NULL UNIQUE,
+    reason TEXT DEFAULT '',
+    source TEXT DEFAULT 'manual',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_blacklist_phone ON blacklist(phone);
+
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    name TEXT DEFAULT '',
+    events TEXT DEFAULT '["message.received","message.sent"]',
+    secret TEXT DEFAULT '',
+    enabled INTEGER DEFAULT 1,
+    last_triggered_at TEXT,
+    last_status INTEGER,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS follow_ups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    delay_minutes INTEGER NOT NULL DEFAULT 60,
+    status TEXT DEFAULT 'pending',
+    scheduled_for TEXT,
+    sent_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_follow_ups_status ON follow_ups(status);
+  CREATE INDEX IF NOT EXISTS idx_follow_ups_scheduled ON follow_ups(scheduled_for);
 `);
 
 // Migrations for existing databases
@@ -539,4 +577,95 @@ const autoReplyLogs = {
     }
 };
 
-module.exports = { db, sessions, groups, contacts, campaigns, messages, settings, quickReplies, templates, autoReplyLogs, waContacts };
+const blacklist = {
+    getAll: () => db.prepare('SELECT * FROM blacklist ORDER BY created_at DESC').all(),
+    getByPhone: (phone) => db.prepare('SELECT * FROM blacklist WHERE phone = ?').get(phone),
+    isBlacklisted: (phone) => {
+        const row = db.prepare('SELECT id FROM blacklist WHERE phone = ?').get(phone);
+        return !!row;
+    },
+    add: (phone, reason, source) => {
+        return db.prepare('INSERT OR IGNORE INTO blacklist (phone, reason, source) VALUES (?, ?, ?)').run(phone, reason || '', source || 'manual');
+    },
+    remove: (phone) => db.prepare('DELETE FROM blacklist WHERE phone = ?').run(phone),
+    removeById: (id) => db.prepare('DELETE FROM blacklist WHERE id = ?').run(id),
+    count: () => db.prepare('SELECT COUNT(*) as cnt FROM blacklist').get().cnt,
+    search: (q) => db.prepare('SELECT * FROM blacklist WHERE phone LIKE ? OR reason LIKE ? ORDER BY created_at DESC').all(`%${q}%`, `%${q}%`),
+    importMany: (phones, reason, source) => {
+        const stmt = db.prepare('INSERT OR IGNORE INTO blacklist (phone, reason, source) VALUES (?, ?, ?)');
+        const tx = db.transaction((list) => {
+            let inserted = 0;
+            for (const phone of list) {
+                const r = stmt.run(phone.trim(), reason || 'bulk import', source || 'import');
+                if (r.changes) inserted++;
+            }
+            return inserted;
+        });
+        return tx(phones);
+    },
+};
+
+const webhooks = {
+    getAll: () => db.prepare('SELECT * FROM webhooks ORDER BY created_at DESC').all(),
+    getById: (id) => db.prepare('SELECT * FROM webhooks WHERE id = ?').get(id),
+    getEnabled: () => db.prepare('SELECT * FROM webhooks WHERE enabled = 1').all(),
+    create: (url, name, events, secret) => {
+        return db.prepare('INSERT INTO webhooks (url, name, events, secret) VALUES (?, ?, ?, ?)').run(url, name || '', JSON.stringify(events || ['message.received']), secret || '');
+    },
+    update: (id, fields) => {
+        const ALLOWED = ['url', 'name', 'events', 'secret', 'enabled'];
+        const sets = [];
+        const vals = [];
+        for (const [k, v] of Object.entries(fields)) {
+            if (!ALLOWED.includes(k)) continue;
+            sets.push(`${k} = ?`);
+            vals.push(k === 'events' ? JSON.stringify(v) : v);
+        }
+        if (sets.length === 0) return;
+        vals.push(id);
+        db.prepare(`UPDATE webhooks SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    },
+    delete: (id) => db.prepare('DELETE FROM webhooks WHERE id = ?').run(id),
+    recordTrigger: (id, status) => {
+        db.prepare("UPDATE webhooks SET last_triggered_at = datetime('now'), last_status = ? WHERE id = ?").run(status, id);
+    },
+};
+
+const followUps = {
+    getAll: () => db.prepare('SELECT * FROM follow_ups ORDER BY created_at DESC').all(),
+    getById: (id) => db.prepare('SELECT * FROM follow_ups WHERE id = ?').get(id),
+    getPending: () => db.prepare("SELECT * FROM follow_ups WHERE status = 'pending' AND scheduled_for <= datetime('now') ORDER BY scheduled_for ASC").all(),
+    getUpcoming: () => db.prepare("SELECT * FROM follow_ups WHERE status = 'pending' AND scheduled_for > datetime('now') ORDER BY scheduled_for ASC").all(),
+    create: (name, phone, sessionId, message, delayMinutes) => {
+        const scheduledFor = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+        return db.prepare('INSERT INTO follow_ups (name, phone, session_id, message, delay_minutes, status, scheduled_for) VALUES (?, ?, ?, ?, ?, ?, ?)').run(name, phone, sessionId, message, delayMinutes, 'pending', scheduledFor);
+    },
+    update: (id, fields) => {
+        const ALLOWED = ['name', 'phone', 'session_id', 'message', 'delay_minutes', 'status', 'scheduled_for'];
+        const sets = [];
+        const vals = [];
+        for (const [k, v] of Object.entries(fields)) {
+            if (!ALLOWED.includes(k)) continue;
+            sets.push(`${k} = ?`);
+            vals.push(v);
+        }
+        if (sets.length === 0) return;
+        vals.push(id);
+        db.prepare(`UPDATE follow_ups SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    },
+    markSent: (id) => {
+        db.prepare("UPDATE follow_ups SET status = 'sent', sent_at = datetime('now') WHERE id = ?").run(id);
+    },
+    markFailed: (id) => {
+        db.prepare("UPDATE follow_ups SET status = 'failed' WHERE id = ?").run(id);
+    },
+    delete: (id) => db.prepare('DELETE FROM follow_ups WHERE id = ?').run(id),
+    stats: () => {
+        const pending = db.prepare("SELECT COUNT(*) as cnt FROM follow_ups WHERE status = 'pending'").get().cnt;
+        const sent = db.prepare("SELECT COUNT(*) as cnt FROM follow_ups WHERE status = 'sent'").get().cnt;
+        const failed = db.prepare("SELECT COUNT(*) as cnt FROM follow_ups WHERE status = 'failed'").get().cnt;
+        return { pending, sent, failed, total: pending + sent + failed };
+    },
+};
+
+module.exports = { db, sessions, groups, contacts, campaigns, messages, settings, quickReplies, templates, autoReplyLogs, waContacts, blacklist, webhooks, followUps };
