@@ -238,7 +238,7 @@ export function AppShell({ children }: AppShellProps) {
                         <div className="text-[10px] text-muted-foreground mt-1 flex items-center justify-center gap-1">
                             <span>designed by</span>
                             <motion.a
-                                href="https://ajm.tech"
+                                href="https://web-ajm.vercel.app/"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="font-bold tracking-wider inline-flex items-center text-xs"
@@ -255,7 +255,7 @@ export function AppShell({ children }: AppShellProps) {
                                 animate={{ backgroundPosition: ['0px 30%', '15px 30%'] }}
                                 transition={{ duration: 0.6, repeat: Infinity, ease: 'linear' }}
                             >
-                                ajm.tech
+                                web-ajm.vercel.app
                             </motion.a>
                         </div>
                     </div>

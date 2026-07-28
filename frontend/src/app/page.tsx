@@ -160,7 +160,7 @@ export default function Home() {
               className="mt-6 text-xs text-muted-foreground"
             >
               Need a license?{' '}
-              <a href="https://www.ajm.tech/products/ajm-whatsapp-bot" target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              <a href="https://web-ajm.vercel.app/" target="_blank" rel="noreferrer" className="text-primary hover:underline">
                 Buy here
               </a>
             </motion.p>
