@@ -851,12 +851,15 @@ async function getGroupParticipants(sessionId, groupId) {
                     if (!phone) return null; // Unresolved @lid participant — skip rather than import a fake number
                     const contact = store.get(phone);
                     const displayName = contact?.name || p.name || p.notify || p.verifiedName || p.pushname || p.pushName || '';
+                    const isAdmin = p.admin === 'admin' || p.admin === 'superadmin' || false;
                     return {
                         phone,
                         name: displayName,
                         pushname: displayName,
                         notify: displayName,
                         company: '',
+                        isAdmin,
+                        admin: p.admin || null,
                     };
                 })
                 .filter(Boolean);

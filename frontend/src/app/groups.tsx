@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupParticipants, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,8 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Users, Plus, Trash2, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy } from 'lucide-react';
+import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function GroupController() {
@@ -21,6 +20,7 @@ export function GroupController() {
     const [selectedGroup, setSelectedGroup] = useState<any>(null);
     const [members, setMembers] = useState<any[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
 
     // Dialogs
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
@@ -62,14 +62,29 @@ export function GroupController() {
 
     const fetchMembers = async (group: any) => {
         setSelectedGroup(group);
+        setSelectedMembers(new Set());
         setLoadingMembers(true);
         try {
-            const data = await getWaGroupParticipants(selectedSession, group.id);
+            const data = await getWaGroupParticipantsDetailed(group.id, selectedSession);
             setMembers(Array.isArray(data) ? data : []);
         } catch (e) {
             toast.error('Failed to load members');
         }
         setLoadingMembers(false);
+    };
+
+    const toggleMember = (phone: string) => {
+        setSelectedMembers(prev => {
+            const next = new Set(prev);
+            if (next.has(phone)) next.delete(phone);
+            else next.add(phone);
+            return next;
+        });
+    };
+
+    const selectAll = () => {
+        const nonAdmins = filteredMembers.filter(m => !m.isAdmin).map(m => m.phone);
+        setSelectedMembers(new Set(nonAdmins));
     };
 
     const handleAddMember = async () => {
@@ -86,17 +101,28 @@ export function GroupController() {
         }
     };
 
-    const handleRemoveMember = async () => {
-        if (!removePhone.trim()) return toast.error('Phone number required');
+    const handleRemoveSelected = async () => {
+        if (selectedMembers.size === 0) return toast.error('Select members first');
+        const phones = Array.from(selectedMembers);
+        if (!confirm(`Remove ${phones.length} member(s) from ${selectedGroup.name}?`)) return;
         try {
-            const phone = removePhone.replace(/[^0-9]/g, '');
-            await removeWaGroupMembers(selectedGroup.id, selectedSession, [phone]);
-            toast.success(`${phone} removed from ${selectedGroup.name}`);
-            setIsRemoveMemberOpen(false);
-            setRemovePhone('');
+            await removeWaGroupMembers(selectedGroup.id, selectedSession, phones);
+            toast.success(`${phones.length} member(s) removed`);
+            setSelectedMembers(new Set());
             fetchMembers(selectedGroup);
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Failed to remove member');
+            toast.error(e?.response?.data?.error || 'Failed to remove members');
+        }
+    };
+
+    const handleRemoveSingle = async (phone: string) => {
+        if (!confirm(`Remove ${phone} from ${selectedGroup.name}?`)) return;
+        try {
+            await removeWaGroupMembers(selectedGroup.id, selectedSession, [phone]);
+            toast.success(`${phone} removed`);
+            fetchMembers(selectedGroup);
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Failed to remove');
         }
     };
 
@@ -122,7 +148,7 @@ export function GroupController() {
             toast.success(`Group renamed to "${renameName}"`);
             setIsRenameOpen(false);
             setRenameName('');
-            fetchGroups(selectedSession);
+            fetchGroups(selectedGroup);
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'Failed to rename');
         }
@@ -147,7 +173,7 @@ export function GroupController() {
             setInviteLink(data.inviteLink);
             setIsInviteOpen(true);
         } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Failed to get invite link');
+            toast.error(e?.response?.data?.error || 'Failed to get invite');
         }
     };
 
@@ -157,8 +183,14 @@ export function GroupController() {
     };
 
     const filteredMembers = members.filter(m =>
-        !searchMembers || (m.name && m.name.toLowerCase().includes(searchMembers.toLowerCase())) || m.phone?.includes(searchMembers)
+        !searchMembers ||
+        (m.name && m.name.toLowerCase().includes(searchMembers.toLowerCase())) ||
+        (m.dbName && m.dbName.toLowerCase().includes(searchMembers.toLowerCase())) ||
+        m.phone?.includes(searchMembers)
     );
+
+    const adminCount = members.filter(m => m.isAdmin).length;
+    const regularCount = members.filter(m => !m.isAdmin).length;
 
     return (
         <div className="p-6 xl:p-10 max-w-[1600px] mx-auto space-y-6 w-full">
@@ -206,25 +238,27 @@ export function GroupController() {
                     ) : groups.length === 0 ? (
                         <Card><CardContent className="pt-6 text-center text-muted-foreground">No groups found</CardContent></Card>
                     ) : (
-                        groups.map((g) => (
-                            <Card
-                                key={g.id}
-                                className={`cursor-pointer transition-all hover:shadow-md ${selectedGroup?.id === g.id ? 'border-primary shadow-md' : 'border-border/50'}`}
-                                onClick={() => fetchMembers(g)}
-                            >
-                                <CardContent className="pt-3 pb-3">
-                                    <div className="flex items-center justify-between">
-                                        <div className="min-w-0 flex-1">
-                                            <p className="font-medium text-sm truncate">{g.name}</p>
-                                            <p className="text-xs text-muted-foreground">{g.participantCount} members</p>
+                        <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                            {groups.map((g) => (
+                                <Card
+                                    key={g.id}
+                                    className={`cursor-pointer transition-all hover:shadow-md ${selectedGroup?.id === g.id ? 'border-primary shadow-md ring-1 ring-primary/20' : 'border-border/50'}`}
+                                    onClick={() => fetchMembers(g)}
+                                >
+                                    <CardContent className="pt-3 pb-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-medium text-sm truncate">{g.name}</p>
+                                                <p className="text-xs text-muted-foreground">{g.participantCount} members</p>
+                                            </div>
+                                            {selectedGroup?.id === g.id && (
+                                                <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                                            )}
                                         </div>
-                                        {selectedGroup?.id === g.id && (
-                                            <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
                     )}
                 </div>
 
@@ -235,16 +269,26 @@ export function GroupController() {
                             <CardHeader className="pb-3">
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <CardTitle className="text-lg">{selectedGroup.name}</CardTitle>
-                                        <CardDescription>{members.length} members loaded</CardDescription>
+                                        <CardTitle className="text-lg flex items-center gap-2">{selectedGroup.name}</CardTitle>
+                                        <div className="flex items-center gap-4 mt-1">
+                                            <CardDescription>{members.length} members</CardDescription>
+                                            {adminCount > 0 && <span className="text-xs text-amber-500 flex items-center gap-1"><Crown className="w-3 h-3" /> {adminCount} admin(s)</span>}
+                                            {selectedMembers.size > 0 && <span className="text-xs text-primary">{selectedMembers.size} selected</span>}
+                                        </div>
                                     </div>
                                     <div className="flex gap-1.5 flex-wrap justify-end">
                                         <Button variant="outline" size="sm" onClick={() => setIsAddMemberOpen(true)}>
                                             <UserPlus className="w-3.5 h-3.5 mr-1" /> Add
                                         </Button>
-                                        <Button variant="outline" size="sm" onClick={() => setIsRemoveMemberOpen(true)}>
-                                            <UserMinus className="w-3.5 h-3.5 mr-1" /> Remove
-                                        </Button>
+                                        {selectedMembers.size > 0 ? (
+                                            <Button size="sm" onClick={handleRemoveSelected} className="bg-red-600 hover:bg-red-700">
+                                                <UserMinus className="w-3.5 h-3.5 mr-1" /> Remove ({selectedMembers.size})
+                                            </Button>
+                                        ) : (
+                                            <Button variant="outline" size="sm" onClick={() => { setRemovePhone(''); setIsRemoveMemberOpen(true); }}>
+                                                <UserMinus className="w-3.5 h-3.5 mr-1" /> Remove
+                                            </Button>
+                                        )}
                                         <Button variant="outline" size="sm" onClick={handleGetInvite}>
                                             <Link className="w-3.5 h-3.5 mr-1" /> Invite
                                         </Button>
@@ -268,30 +312,85 @@ export function GroupController() {
                                             <div className="relative flex-1">
                                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                                 <Input
-                                                    placeholder="Search members..."
+                                                    placeholder="Search by name or phone..."
                                                     value={searchMembers}
                                                     onChange={(e) => setSearchMembers(e.target.value)}
                                                     className="pl-9"
                                                 />
                                             </div>
+                                            {selectedMembers.size === 0 && (
+                                                <Button variant="outline" size="sm" onClick={selectAll} className="whitespace-nowrap">
+                                                    Select Non-Admins
+                                                </Button>
+                                            )}
+                                            {selectedMembers.size > 0 && (
+                                                <Button variant="outline" size="sm" onClick={() => setSelectedMembers(new Set())} className="whitespace-nowrap">
+                                                    Clear
+                                                </Button>
+                                            )}
                                         </div>
                                         <div className="max-h-[500px] overflow-y-auto space-y-1">
                                             {filteredMembers.length === 0 ? (
                                                 <p className="text-center text-muted-foreground py-8 text-sm">No members found</p>
                                             ) : (
-                                                filteredMembers.map((m, i) => (
-                                                    <div key={m.phone || i} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-secondary/50 transition-colors">
-                                                        <div className="flex items-center gap-3 min-w-0">
-                                                            <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
-                                                                {(m.name || m.phone || '?')[0].toUpperCase()}
+                                                filteredMembers.map((m) => {
+                                                    const displayName = m.dbName || m.name || 'Unknown';
+                                                    const isSelected = selectedMembers.has(m.phone);
+                                                    return (
+                                                        <div
+                                                            key={m.phone}
+                                                            className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${
+                                                                isSelected ? 'bg-primary/10 border border-primary/30' : 'hover:bg-secondary/50 border border-transparent'
+                                                            }`}
+                                                            onClick={() => toggleMember(m.phone)}
+                                                        >
+                                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={() => toggleMember(m.phone)}
+                                                                    className="rounded flex-shrink-0"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                                                                    m.isAdmin ? 'bg-amber-500/20 text-amber-600' : 'bg-secondary text-muted-foreground'
+                                                                }`}>
+                                                                    {m.isAdmin ? <Crown className="w-4 h-4" /> : displayName[0]?.toUpperCase() || '?'}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <p className="text-sm font-medium truncate">{displayName}</p>
+                                                                        {m.isAdmin && (
+                                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-medium whitespace-nowrap">
+                                                                                {m.admin === 'superadmin' ? 'Owner' : 'Admin'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                                        <span className="text-xs text-muted-foreground font-mono">{m.phone}</span>
+                                                                        {m.dbName && m.name && m.dbName !== m.name && (
+                                                                            <span className="text-[10px] text-muted-foreground/60">WA: {m.name}</span>
+                                                                        )}
+                                                                        {m.dbCompany && (
+                                                                            <span className="text-[10px] text-muted-foreground/60 flex items-center gap-0.5">
+                                                                                <Building2 className="w-2.5 h-2.5" /> {m.dbCompany}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                            <div className="min-w-0">
-                                                                <p className="text-sm font-medium truncate">{m.name || m.pushname || 'Unknown'}</p>
-                                                                <p className="text-xs text-muted-foreground font-mono">{m.phone}</p>
-                                                            </div>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-red-500 hover:text-red-600 hover:bg-red-500/10 flex-shrink-0"
+                                                                onClick={(e) => { e.stopPropagation(); handleRemoveSingle(m.phone); }}
+                                                                title="Remove from group"
+                                                            >
+                                                                <UserMinus className="w-3.5 h-3.5" />
+                                                            </Button>
                                                         </div>
-                                                    </div>
-                                                ))
+                                                    );
+                                                })
                                             )}
                                         </div>
                                     </>
@@ -334,9 +433,9 @@ export function GroupController() {
                     <div className="space-y-4 mt-4">
                         <div>
                             <Label>Phone Number</Label>
-                            <Input placeholder="919876543210" value={removePhone} onChange={(e) => setRemovePhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRemoveMember()} />
+                            <Input placeholder="919876543210" value={removePhone} onChange={(e) => setRemovePhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRemoveSingle(removePhone)} />
                         </div>
-                        <Button onClick={handleRemoveMember} className="w-full bg-red-600 hover:bg-red-700">Remove Member</Button>
+                        <Button onClick={() => { handleRemoveSingle(removePhone); setIsRemoveMemberOpen(false); }} className="w-full bg-red-600 hover:bg-red-700">Remove Member</Button>
                     </div>
                 </DialogContent>
             </Dialog>

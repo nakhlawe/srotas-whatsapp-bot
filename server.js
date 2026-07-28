@@ -662,6 +662,26 @@ app.get('/api/wa-groups/rate-limit', (req, res) => {
     res.json({ count: sessionManager.getGroupActionCount(), limit: 5, window: '1 minute' });
 });
 
+app.get('/api/wa-groups/:groupId/participants/:sessionId', async (req, res) => {
+    try {
+        const { groupId, sessionId } = req.params;
+        const participants = await sessionManager.getGroupParticipants(sessionId, groupId);
+        // Enrich with contacts DB names
+        const enriched = participants.map(p => {
+            const dbContact = contactsDb.getByPhone(p.phone);
+            return {
+                ...p,
+                dbName: dbContact ? (dbContact.name || '') : '',
+                dbCompany: dbContact ? (dbContact.company || '') : '',
+                groupName: dbContact ? dbContact.group_name : '',
+            };
+        });
+        res.json(enriched);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.delete('/api/contacts/:id', (req, res) => {
     contactsDb.delete(parseInt(req.params.id));
     res.json({ success: true });

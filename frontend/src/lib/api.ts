@@ -141,3 +141,4 @@ export const removeWaGroupMembers = (groupId: string, sessionId: string, partici
 export const renameWaGroup = (groupId: string, sessionId: string, name: string) => api.put(`/wa-groups/${groupId}/rename`, { sessionId, name }).then(r => r.data);
 export const leaveWaGroup = (groupId: string, sessionId: string) => api.post(`/wa-groups/${groupId}/leave`, { sessionId }).then(r => r.data);
 export const getWaGroupInvite = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/invite`, { params: { sessionId } }).then(r => r.data);
+export const getWaGroupParticipantsDetailed = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/participants/${sessionId}`).then(r => r.data);
