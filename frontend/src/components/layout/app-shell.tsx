@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     LayoutDashboard,
@@ -47,7 +47,20 @@ const NAV_ITEMS = [
 ];
 
 export function AppShell({ children }: AppShellProps) {
-    const [activePage, setActivePage] = useState('dashboard');
+    const [activePage, _setActivePage] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const hash = window.location.hash.replace('#', '');
+            return hash || 'dashboard';
+        }
+        return 'dashboard';
+    });
+    const activePageRef = useRef(activePage);
+    activePageRef.current = activePage;
+
+    const setActivePage = (page: string) => {
+        _setActivePage(page);
+        window.location.hash = page;
+    };
     const [hasEasterEgg, setHasEasterEgg] = useState(false);
     const [isDark, setIsDark] = useState(true);
     const [isOnline, setIsOnline] = useState(false);
@@ -78,6 +91,11 @@ export function AppShell({ children }: AppShellProps) {
     };
 
     useEffect(() => {
+        const onHashChange = () => {
+            const hash = window.location.hash.replace('#', '');
+            if (hash && hash !== activePageRef.current) _setActivePage(hash);
+        };
+        window.addEventListener('hashchange', onHashChange);
         fetchStatus();
 
         if (socket) {
@@ -85,14 +103,17 @@ export function AppShell({ children }: AppShellProps) {
             socket.on('session:disconnected', fetchStatus);
             socket.on('bulk:progress', fetchStatus);
             socket.on('bulk:complete', fetchStatus);
+        }
 
-            return () => {
+        return () => {
+            window.removeEventListener('hashchange', onHashChange);
+            if (socket) {
                 socket.off('session:ready', fetchStatus);
                 socket.off('session:disconnected', fetchStatus);
                 socket.off('bulk:progress', fetchStatus);
                 socket.off('bulk:complete', fetchStatus);
-            };
-        }
+            }
+        };
     }, [socket]);
 
     useEffect(() => {
