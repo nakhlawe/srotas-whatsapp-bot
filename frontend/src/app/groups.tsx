@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts, getGroupJoinRequests, approveGroupJoinRequests, rejectGroupJoinRequests } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts, getGroupJoinRequests, approveGroupJoinRequests, rejectGroupJoinRequests, getGroupsWithPendingRequests } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,7 +69,7 @@ export function GroupController() {
     const [bulkPhones, setBulkPhones] = useState('');
     const [joinRequests, setJoinRequests] = useState<any[]>([]);
     const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
-    const [joinRequestsExpanded, setJoinRequestsExpanded] = useState(false);
+    const [pendingRequestGroups, setPendingRequestGroups] = useState<Map<string, { count: number }>>(new Map());
     const { socket } = useSocket();
 
     const fetchContacts = async (search = '') => {
@@ -119,6 +119,18 @@ export function GroupController() {
             toast.error('Failed to load groups');
         }
         setLoading(false);
+        fetchPendingRequestGroups(sessionId);
+    };
+
+    const fetchPendingRequestGroups = async (sessionId: string) => {
+        try {
+            const data = await getGroupsWithPendingRequests(sessionId);
+            const map = new Map<string, { count: number }>();
+            if (data?.groups) {
+                for (const g of data.groups) map.set(g.groupId, { count: g.count });
+            }
+            setPendingRequestGroups(map);
+        } catch {}
     };
 
     const handleSortChange = (order: 'asc' | 'desc' | '') => {
@@ -196,8 +208,9 @@ export function GroupController() {
     useEffect(() => {
         if (!socket || !selectedSession) return;
         const handler = (data: any) => {
-            if (data.sessionId === selectedSession && selectedGroup?.id === data.groupId) {
-                fetchJoinRequests();
+            if (data.sessionId === selectedSession) {
+                if (selectedGroup?.id === data.groupId) fetchJoinRequests();
+                fetchPendingRequestGroups(selectedSession);
             }
         };
         socket.on('group.join-request', handler);
@@ -488,7 +501,11 @@ export function GroupController() {
         !searchGroup ||
         g.name?.toLowerCase().includes(searchGroup.toLowerCase()) ||
         g.id?.includes(searchGroup)
-    );
+    ).sort((a, b) => {
+        const aPending = pendingRequestGroups.has(a.id) ? 1 : 0;
+        const bPending = pendingRequestGroups.has(b.id) ? 1 : 0;
+        return bPending - aPending;
+    });
 
     const filteredMembers = members.filter(m =>
         !searchMembers ||
@@ -528,7 +545,7 @@ export function GroupController() {
             </div>
             <div className="space-y-1 max-h-[460px] overflow-y-auto">
                 {filteredGroups.map((g) => (
-                    <div key={g.id} className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => fetchMembers(g)}>
+                    <div key={g.id} className={`flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-secondary/30 transition-colors cursor-pointer ${pendingRequestGroups.has(g.id) ? 'bg-amber-500/5 border border-amber-500/20' : ''}`} onClick={() => fetchMembers(g)}>
                         <input
                             type="checkbox"
                             checked={selectedGroupIds.has(g.id)}
@@ -536,8 +553,18 @@ export function GroupController() {
                             onClick={(e) => toggleGroup(g.id, e)}
                             className="rounded flex-shrink-0 cursor-pointer"
                         />
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
                             <p className="text-sm font-medium truncate">{g.name}</p>
+                            {pendingRequestGroups.has(g.id) && (
+                                <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-600 rounded-full">
+                                    <DoorOpen className="w-2.5 h-2.5" /> {pendingRequestGroups.get(g.id)?.count || ''}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            {pendingRequestGroups.has(g.id) && (
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            )}
                             <p className="text-xs text-muted-foreground">{g.participantCount} members</p>
                         </div>
                         {selectedGroup?.id === g.id && (

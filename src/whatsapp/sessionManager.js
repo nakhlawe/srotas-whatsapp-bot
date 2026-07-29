@@ -1094,6 +1094,19 @@ async function rejectGroupJoinRequest(sessionId, groupId, participantJids) {
     return result;
 }
 
+function getGroupsWithPendingRequests(sessionId) {
+    const store = joinRequestsStore.get(sessionId) || new Map();
+    const entries = [];
+    for (const [groupId, requests] of store) {
+        if (requests.length > 0) {
+            const latest = Math.max(...requests.map(r => r.timestamp || 0));
+            entries.push({ groupId, count: requests.length, latestTimestamp: latest });
+        }
+    }
+    entries.sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+    return entries;
+}
+
 async function getGroupMetadataFull(sessionId, groupId) {
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
@@ -1303,6 +1316,7 @@ module.exports = {
     getGroupJoinRequests,
     approveGroupJoinRequest,
     rejectGroupJoinRequest,
+    getGroupsWithPendingRequests,
     exportGroup,
     exportAllGroups,
     exportAllGroupsSummary,

@@ -684,6 +684,17 @@ app.get('/api/wa-groups/rate-limit', (req, res) => {
     res.json({ count: sessionManager.getGroupActionCount(), limit: 5, window: '1 minute' });
 });
 
+// ─── Groups with pending join requests ───
+app.get('/api/wa-groups/pending-requests/:sessionId', (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const result = sessionManager.getGroupsWithPendingRequests(sessionId);
+        res.json({ success: true, groups: result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── Group Join Requests ───
 app.get('/api/wa-groups/:groupId/join-requests/:sessionId', async (req, res) => {
     try {

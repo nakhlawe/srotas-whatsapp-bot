@@ -175,3 +175,4 @@ export const bulkRemoveFromGroups = (sessionId: string, groupIds: string[], part
 export const getGroupJoinRequests = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/join-requests/${sessionId}`).then(r => r.data);
 export const approveGroupJoinRequests = (groupId: string, sessionId: string, participants: string[]) => api.post(`/wa-groups/${groupId}/join-requests/approve/${sessionId}`, { participants }).then(r => r.data);
 export const rejectGroupJoinRequests = (groupId: string, sessionId: string, participants: string[]) => api.post(`/wa-groups/${groupId}/join-requests/reject/${sessionId}`, { participants }).then(r => r.data);
+export const getGroupsWithPendingRequests = (sessionId: string) => api.get(`/wa-groups/pending-requests/${sessionId}`).then(r => r.data);
