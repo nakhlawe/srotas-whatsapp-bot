@@ -27,6 +27,7 @@ const contactSyncInFlight = new Map();    // sessionId → Promise (dedupe overl
 const groupSyncInFlight = new Map();      // "sessionId:groupId" → Promise (dedupe overlapping group imports)
 const lastFullResyncAttempt = new Map();  // sessionId → timestamp of last resyncAppState fallback
 const joinRequestsStore = new Map();      // sessionId → Map<groupId, Array<{ participant, author, timestamp }>>
+const groupParticipantsCache = new Map(); // "sessionId:groupId" → { data, ts } (TTL 30s)
 
 // Prune pollMessageStore every 30 minutes (remove entries older than 7 days)
 setInterval(() => {
@@ -848,6 +849,13 @@ async function getWhatsAppGroups(sessionId) {
 }
 
 async function getGroupParticipants(sessionId, groupId) {
+    // Check cache first (30s TTL)
+    const cacheKey = `${sessionId}:${groupId}`;
+    const cached = groupParticipantsCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 30000) {
+        return cached.data;
+    }
+
     // Dedupe overlapping calls for the *same* group (double-clicks) without
     // blocking imports of a *different* group for the same session, which is
     // why this is keyed by sessionId+groupId rather than sessionId alone.
@@ -916,6 +924,8 @@ async function getGroupParticipants(sessionId, groupId) {
                 result = buildResult();
             }
 
+            // Cache result for 30s to avoid rate-overlimit
+            groupParticipantsCache.set(cacheKey, { data: result, ts: Date.now() });
             return result;
         } catch (error) {
             console.error(`[Session ${sessionId}] Error fetching group participants:`, error.message);
