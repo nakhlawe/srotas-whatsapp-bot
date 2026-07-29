@@ -482,6 +482,9 @@ const waContacts = {
     getBySession: (sessionId) => {
         return db.prepare('SELECT phone, name FROM wa_contacts WHERE session_id = ?').all(sessionId);
     },
+    getByPhone: (phone) => {
+        return db.prepare('SELECT phone, name FROM wa_contacts WHERE phone = ? ORDER BY updated_at DESC LIMIT 1').get(phone);
+    },
     deleteBySession: (sessionId) => {
         return db.prepare('DELETE FROM wa_contacts WHERE session_id = ?').run(sessionId);
     },

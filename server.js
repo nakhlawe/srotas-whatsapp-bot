@@ -30,7 +30,7 @@ const bulkSender = require('./src/messaging/bulkSender');
 const scheduler = require('./src/messaging/scheduler');
 const importer = require('./src/contacts/importer');
 const license = require('./src/license');
-const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb, waGroupCategories: waGroupCategoriesDb } = require('./src/db/database');
+const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb, waGroupCategories: waGroupCategoriesDb, waContacts: waContactsDb } = require('./src/db/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -926,14 +926,15 @@ app.get('/api/wa-groups/:groupId/participants/:sessionId', async (req, res) => {
     try {
         const { groupId, sessionId } = req.params;
         const participants = await sessionManager.getGroupParticipants(sessionId, groupId);
-        // Enrich with contacts DB names
         const enriched = participants.map(p => {
             const dbContact = contactsDb.getByPhone(p.phone);
+            const waContact = waContactsDb.getByPhone(p.phone);
             return {
                 ...p,
                 dbName: dbContact ? (dbContact.name || '') : '',
                 dbCompany: dbContact ? (dbContact.company || '') : '',
                 groupName: dbContact ? dbContact.group_name : '',
+                waName: waContact ? (waContact.name || '') : '',
             };
         });
         res.json(enriched);

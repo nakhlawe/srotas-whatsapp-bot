@@ -196,6 +196,8 @@ export function GroupController() {
         setSelectedMembers(new Set());
         setLoadingMembers(true);
         try {
+            // Trigger contact sync to get latest names
+            syncWhatsAppContacts(selectedSession).catch(() => {});
             const data = await getWaGroupParticipantsDetailed(group.id, selectedSession);
             setMembers(Array.isArray(data) ? data : []);
         } catch (e) {
@@ -854,9 +856,10 @@ export function GroupController() {
                                                         <p className="text-center text-muted-foreground py-8 text-sm">No members found</p>
                                                     ) : (
                                                         filteredMembers.map((m) => {
-                                                            const waName = m.name || m.pushname || m.notify || '';
+                                                            const name = m.name || m.pushname || m.notify || '';
                                                             const dbName = m.dbName || '';
-                                                            const displayName = dbName || waName || m.phone;
+                                                            const waName = m.waName || '';
+                                                            const displayName = dbName || waName || name || m.phone;
                                                             const isSelected = selectedMembers.has(m.phone);
                                                             return (
                                                                 <div
@@ -887,14 +890,14 @@ export function GroupController() {
                                                                                         {m.admin === 'superadmin' ? 'Owner' : 'Admin'}
                                                                                     </span>
                                                                                 )}
-                                                                                {!dbName && waName && (
+                                                                                {!dbName && (waName || name) && (
                                                                                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 font-medium whitespace-nowrap">واتساب</span>
                                                                                 )}
                                                                             </div>
                                                                             <div className="flex items-center gap-2 mt-0.5">
                                                                                 <span className="text-xs text-muted-foreground font-mono">{m.phone}</span>
-                                                                                {dbName && waName && dbName !== waName && (
-                                                                                    <span className="text-[10px] text-muted-foreground/60">واتساب: {waName}</span>
+                                                                                {dbName && (name || waName) && dbName !== (name || waName) && (
+                                                                                    <span className="text-[10px] text-muted-foreground/60">واتساب: {name || waName}</span>
                                                                                 )}
                                                                                 {m.dbCompany && (
                                                                                     <span className="text-[10px] text-muted-foreground/60 flex items-center gap-0.5">
