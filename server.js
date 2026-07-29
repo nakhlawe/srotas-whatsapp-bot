@@ -526,6 +526,10 @@ app.get('/api/contacts/sync/:sessionId', async (req, res) => {
         res.json(contacts);
     } catch (err) {
         console.error('[Sync Contacts] Error:', err.message);
+        // Return empty array for expected cases instead of 500
+        if (err.message.includes('none have a saved name') || err.message.includes('No contacts found')) {
+            return res.json([]);
+        }
         res.status(500).json({ error: err.message || 'Failed to sync WhatsApp contacts' });
     }
 });
@@ -2212,6 +2216,50 @@ app.post('/api/wa-group-categories/:id/bulk-remove', async (req, res) => {
                 results.push({ groupId: m.group_id, groupName: m.group_name, status: 'ok', result: r });
             } catch (err) {
                 results.push({ groupId: m.group_id, groupName: m.group_name, status: 'error', error: err.message });
+            }
+        }
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Bulk action: add participant(s) to multiple groups by ID (not tied to a category)
+app.post('/api/groups/bulk-add', async (req, res) => {
+    try {
+        const { sessionId, groupIds, participants } = req.body;
+        if (!sessionId || !groupIds || !groupIds.length || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId, groupIds, and participants are required' });
+        }
+        const results = [];
+        for (const groupId of groupIds) {
+            try {
+                const r = await sessionManager.addGroupParticipants(sessionId, groupId, participants);
+                results.push({ groupId, status: 'ok', result: r });
+            } catch (err) {
+                results.push({ groupId, status: 'error', error: err.message });
+            }
+        }
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Bulk action: remove participant(s) from multiple groups by ID
+app.post('/api/groups/bulk-remove', async (req, res) => {
+    try {
+        const { sessionId, groupIds, participants } = req.body;
+        if (!sessionId || !groupIds || !groupIds.length || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId, groupIds, and participants are required' });
+        }
+        const results = [];
+        for (const groupId of groupIds) {
+            try {
+                const r = await sessionManager.removeGroupParticipants(sessionId, groupId, participants);
+                results.push({ groupId, status: 'ok', result: r });
+            } catch (err) {
+                results.push({ groupId, status: 'error', error: err.message });
             }
         }
         res.json({ success: true, results });

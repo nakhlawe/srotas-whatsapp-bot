@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,7 @@ export function GroupController() {
     const [members, setMembers] = useState<any[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
     const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
+    const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
 
     const [searchGroup, setSearchGroup] = useState('');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | ''>('');
@@ -173,7 +174,72 @@ export function GroupController() {
         });
     };
 
+    const toggleGroup = (groupId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedGroupIds(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    };
+
+    const toggleAllGroups = () => {
+        if (selectedGroupIds.size === filteredGroups.length) {
+            setSelectedGroupIds(new Set());
+        } else {
+            setSelectedGroupIds(new Set(filteredGroups.map(g => g.id)));
+        }
+    };
+
+    const [isBulkGroupAddOpen, setIsBulkGroupAddOpen] = useState(false);
+    const [isBulkGroupRemoveOpen, setIsBulkGroupRemoveOpen] = useState(false);
+    const [bulkGroupPhones, setBulkGroupPhones] = useState('');
+    const [bulkGroupBusy, setBulkGroupBusy] = useState(false);
+
+    const handleBulkGroupAdd = async () => {
+        const phones = bulkGroupPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        if (!phones.length || !selectedGroupIds.size) return toast.error('Phone numbers and groups required');
+        if (!confirm(`Add ${phones.length} number(s) to ${selectedGroupIds.size} selected group(s)?`)) return;
+        setBulkGroupBusy(true);
+        try {
+            const result = await bulkAddToGroups(selectedSession, Array.from(selectedGroupIds), phones);
+            const ok = result.results.filter((r: any) => r.status === 'ok').length;
+            const err = result.results.filter((r: any) => r.status === 'error').length;
+            toast.success(`Added to ${ok} group(s)${err ? `, ${err} failed` : ''}`);
+            setIsBulkGroupAddOpen(false);
+            setBulkGroupPhones('');
+            if (selectedGroup) fetchMembers(selectedGroup);
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Bulk add failed');
+        }
+        setBulkGroupBusy(false);
+    };
+
+    const handleBulkGroupRemove = async () => {
+        const phones = bulkGroupPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        if (!phones.length || !selectedGroupIds.size) return toast.error('Phone numbers and groups required');
+        if (!confirm(`Remove ${phones.length} number(s) from ${selectedGroupIds.size} selected group(s)?`)) return;
+        setBulkGroupBusy(true);
+        try {
+            const result = await bulkRemoveFromGroups(selectedSession, Array.from(selectedGroupIds), phones);
+            const ok = result.results.filter((r: any) => r.status === 'ok').length;
+            const err = result.results.filter((r: any) => r.status === 'error').length;
+            toast.success(`Removed from ${ok} group(s)${err ? `, ${err} failed` : ''}`);
+            setIsBulkGroupRemoveOpen(false);
+            setBulkGroupPhones('');
+            if (selectedGroup) fetchMembers(selectedGroup);
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Bulk remove failed');
+        }
+        setBulkGroupBusy(false);
+    };
+
     const selectAll = () => {
+        const allMembers = filteredMembers.map(m => m.phone);
+        setSelectedMembers(new Set(allMembers));
+    };
+    const selectNonAdmins = () => {
         const nonAdmins = filteredMembers.filter(m => !m.isAdmin).map(m => m.phone);
         setSelectedMembers(new Set(nonAdmins));
     };
@@ -393,26 +459,50 @@ export function GroupController() {
 
     // ─── Shared group list ───
     const GroupList = () => (
-        <div className="space-y-2 max-h-[500px] overflow-y-auto">
-            {filteredGroups.map((g) => (
-                <Card
-                    key={g.id}
-                    className={`cursor-pointer transition-all hover:shadow-md ${selectedGroup?.id === g.id ? 'border-primary shadow-md ring-1 ring-primary/20' : 'border-border/50'}`}
-                    onClick={() => fetchMembers(g)}
-                >
-                    <CardContent className="pt-3 pb-3">
-                        <div className="flex items-center justify-between">
-                            <div className="min-w-0 flex-1">
-                                <p className="font-medium text-sm truncate">{g.name}</p>
-                                <p className="text-xs text-muted-foreground">{g.participantCount} members</p>
-                            </div>
-                            {selectedGroup?.id === g.id && (
-                                <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                            )}
+        <div>
+            {/* Header row with Select All */}
+            <div className="flex items-center gap-2 px-1 pb-2 border-b mb-2">
+                <input
+                    type="checkbox"
+                    checked={filteredGroups.length > 0 && selectedGroupIds.size === filteredGroups.length}
+                    onChange={toggleAllGroups}
+                    className="rounded cursor-pointer flex-shrink-0"
+                />
+                <span className="text-xs font-medium text-muted-foreground">Select All</span>
+                {selectedGroupIds.size > 0 && (
+                    <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-xs font-medium text-primary">{selectedGroupIds.size} selected</span>
+                        <div className="flex gap-1">
+                            <Button size="sm" onClick={() => { setBulkGroupPhones(''); setIsBulkGroupAddOpen(true); }} className="text-xs h-7">
+                                <UserPlus className="w-3 h-3 mr-1" /> Add
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => { setBulkGroupPhones(''); setIsBulkGroupRemoveOpen(true); }} className="text-xs h-7">
+                                <UserMinus className="w-3 h-3 mr-1" /> Remove
+                            </Button>
                         </div>
-                    </CardContent>
-                </Card>
-            ))}
+                    </div>
+                )}
+            </div>
+            <div className="space-y-1 max-h-[460px] overflow-y-auto">
+                {filteredGroups.map((g) => (
+                    <div key={g.id} className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => fetchMembers(g)}>
+                        <input
+                            type="checkbox"
+                            checked={selectedGroupIds.has(g.id)}
+                            onChange={() => {}}
+                            onClick={(e) => toggleGroup(g.id, e)}
+                            className="rounded flex-shrink-0 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{g.name}</p>
+                            <p className="text-xs text-muted-foreground">{g.participantCount} members</p>
+                        </div>
+                        {selectedGroup?.id === g.id && (
+                            <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                        )}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 
@@ -572,9 +662,14 @@ export function GroupController() {
                                                         />
                                                     </div>
                                                     {selectedMembers.size === 0 && (
-                                                        <Button variant="outline" size="sm" onClick={selectAll} className="whitespace-nowrap">
-                                                            Select Non-Admins
-                                                        </Button>
+                                                        <div className="flex gap-1">
+                                                            <Button variant="outline" size="sm" onClick={selectAll} className="whitespace-nowrap">
+                                                                <Check className="w-3 h-3 mr-1" /> Select All
+                                                            </Button>
+                                                            <Button variant="outline" size="sm" onClick={selectNonAdmins} className="whitespace-nowrap">
+                                                                Non-Admins
+                                                            </Button>
+                                                        </div>
                                                     )}
                                                     {selectedMembers.size > 0 && (
                                                         <Button variant="outline" size="sm" onClick={() => setSelectedMembers(new Set())} className="whitespace-nowrap">
@@ -1054,6 +1149,28 @@ export function GroupController() {
                     <div className="space-y-4 mt-4">
                         <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkPhones} onChange={(e) => setBulkPhones(e.target.value)} /></div>
                         <Button onClick={handleBulkRemove} className="w-full bg-red-600 hover:bg-red-700"><UserMinus className="w-4 h-4 mr-2" /> Remove from {categoryMembers.length} Group(s)</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk Add to Selected Groups */}
+            <Dialog open={isBulkGroupAddOpen} onOpenChange={setIsBulkGroupAddOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Add to Selected Groups</DialogTitle><DialogDescription>Add numbers to {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
+                    <div className="space-y-4 mt-4">
+                        <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkGroupPhones} onChange={(e) => setBulkGroupPhones(e.target.value)} /></div>
+                        <Button onClick={handleBulkGroupAdd} className="w-full" disabled={bulkGroupBusy}><UserPlus className="w-4 h-4 mr-2" /> Add to {selectedGroupIds.size} Group(s)</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk Remove from Selected Groups */}
+            <Dialog open={isBulkGroupRemoveOpen} onOpenChange={setIsBulkGroupRemoveOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Remove from Selected Groups</DialogTitle><DialogDescription>Remove numbers from {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
+                    <div className="space-y-4 mt-4">
+                        <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkGroupPhones} onChange={(e) => setBulkGroupPhones(e.target.value)} /></div>
+                        <Button onClick={handleBulkGroupRemove} className="w-full bg-red-600 hover:bg-red-700" disabled={bulkGroupBusy}><UserMinus className="w-4 h-4 mr-2" /> Remove from {selectedGroupIds.size} Group(s)</Button>
                     </div>
                 </DialogContent>
             </Dialog>

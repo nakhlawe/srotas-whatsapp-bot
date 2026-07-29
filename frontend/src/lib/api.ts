@@ -168,3 +168,5 @@ export const removeGroupCategoryMember = (memberId: number) => api.delete(`/wa-g
 export const getGroupCategories = (sessionId: string, groupId: string) => api.get(`/wa-group-categories/group/${sessionId}/${groupId}`).then(r => r.data);
 export const bulkAddToCategoryGroups = (id: number, sessionId: string, participants: string[]) => api.post(`/wa-group-categories/${id}/bulk-add`, { sessionId, participants }).then(r => r.data);
 export const bulkRemoveFromCategoryGroups = (id: number, sessionId: string, participants: string[]) => api.post(`/wa-group-categories/${id}/bulk-remove`, { sessionId, participants }).then(r => r.data);
+export const bulkAddToGroups = (sessionId: string, groupIds: string[], participants: string[]) => api.post('/groups/bulk-add', { sessionId, groupIds, participants }).then(r => r.data);
+export const bulkRemoveFromGroups = (sessionId: string, groupIds: string[], participants: string[]) => api.post('/groups/bulk-remove', { sessionId, groupIds, participants }).then(r => r.data);
