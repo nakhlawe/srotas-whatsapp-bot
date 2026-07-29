@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2, FolderTree, FolderPlus, Tag, Check, X, Trash2, Layers, Send, Download } from 'lucide-react';
+import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2, FolderTree, FolderPlus, Tag, Check, X, Trash2, Layers, Send, Download, ArrowUpDown, StickyNote, BadgePercent } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function GroupController() {
@@ -24,6 +24,8 @@ export function GroupController() {
     const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
 
     const [searchGroup, setSearchGroup] = useState('');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | ''>('');
+    const [autoCategorizing, setAutoCategorizing] = useState(false);
 
     // Categories
     const [categories, setCategories] = useState<any[]>([]);
@@ -56,6 +58,9 @@ export function GroupController() {
     const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
     const [inviteLink, setInviteLink] = useState('');
     const [searchMembers, setSearchMembers] = useState('');
+    const [showBulkActions, setShowBulkActions] = useState(false);
+    const [bulkPhonesInline, setBulkPhonesInline] = useState('');
+    const [bulkActionBusy, setBulkActionBusy] = useState(false);
     const [categoryName, setCategoryName] = useState('');
     const [categoryDesc, setCategoryDesc] = useState('');
     const [selectedCategoryAssign, setSelectedCategoryAssign] = useState('');
@@ -102,12 +107,38 @@ export function GroupController() {
     const fetchGroups = async (sessionId: string) => {
         setLoading(true);
         try {
-            const data = await getWaGroups(sessionId);
+            const data = sortOrder ? await getWaGroupsSorted(sessionId, sortOrder) : await getWaGroups(sessionId);
             setGroups(Array.isArray(data) ? data : (data.value || []));
         } catch (e) {
             toast.error('Failed to load groups');
         }
         setLoading(false);
+    };
+
+    const handleSortChange = (order: 'asc' | 'desc' | '') => {
+        setSortOrder(order);
+        if (!selectedSession) return;
+        setLoading(true);
+        const fetch = order
+            ? getWaGroupsSorted(selectedSession, order)
+            : getWaGroups(selectedSession);
+        fetch.then(data => setGroups(Array.isArray(data) ? data : (data.value || [])))
+            .catch(() => toast.error('Sort failed'))
+            .finally(() => setLoading(false));
+    };
+
+    const handleAutoCategorize = async () => {
+        if (!selectedSession) return toast.error('Select a device first');
+        if (!confirm('Auto-categorize all groups by member count?\nSmall: 1-50\nMedium: 51-200\nLarge: 201-500\nX-Large: 501+\nThis will create/update categories.')) return;
+        setAutoCategorizing(true);
+        try {
+            const result = await autoCategorizeGroups(selectedSession);
+            toast.success(`Categorized: ${result.results.map((r: any) => `${r.category} (${r.groupCount})`).join(', ')}`);
+            fetchCategories();
+        } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Auto-categorize failed');
+        }
+        setAutoCategorizing(false);
     };
 
     const fetchCategoryMembers = async (cat: any) => {
@@ -392,7 +423,21 @@ export function GroupController() {
                     <h1 className="text-3xl font-bold tracking-tight">Group Controller</h1>
                     <p className="text-muted-foreground mt-1">Manage WhatsApp groups, categories, and bulk actions</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
+                    <Select value={sortOrder} onValueChange={(v) => handleSortChange(v as 'asc' | 'desc' | '')}>
+                        <SelectTrigger className="w-[180px]">
+                            <ArrowUpDown className="w-3.5 h-3.5 mr-1" />
+                            <SelectValue placeholder="Sort by count" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="">Default order</SelectItem>
+                            <SelectItem value="desc">Most members first</SelectItem>
+                            <SelectItem value="asc">Least members first</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Button variant="outline" onClick={handleAutoCategorize} disabled={!selectedSession || autoCategorizing}>
+                        <BadgePercent className={`w-4 h-4 mr-2 ${autoCategorizing ? 'animate-spin' : ''}`} /> Auto-Categorize
+                    </Button>
                     <Button variant="outline" onClick={() => fetchGroups(selectedSession)} disabled={!selectedSession || loading}>
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
                     </Button>
@@ -537,12 +582,81 @@ export function GroupController() {
                                                         </Button>
                                                     )}
                                                 </div>
+                                                <div className="flex gap-2 mb-3">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setShowBulkActions(!showBulkActions)}
+                                                        className="text-xs"
+                                                    >
+                                                        <Layers className="w-3 h-3 mr-1" /> {showBulkActions ? 'Hide' : 'Bulk Add/Remove'}
+                                                    </Button>
+                                                </div>
+                                                {showBulkActions && (
+                                                    <div className="mb-4 p-3 border rounded-lg bg-secondary/20 space-y-2">
+                                                        <Label className="text-xs">Phone numbers (comma separated)</Label>
+                                                        <Textarea
+                                                            placeholder="919876543210, 919876543211, ..."
+                                                            rows={3}
+                                                            value={bulkPhonesInline}
+                                                            onChange={(e) => setBulkPhonesInline(e.target.value)}
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                className="flex-1"
+                                                                disabled={bulkActionBusy || !bulkPhonesInline.trim()}
+                                                                onClick={async () => {
+                                                                    const phones = bulkPhonesInline.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+                                                                    if (!phones.length) return toast.error('No valid phone numbers');
+                                                                    setBulkActionBusy(true);
+                                                                    try {
+                                                                        await addWaGroupMembers(selectedGroup.id, selectedSession, phones);
+                                                                        toast.success(`${phones.length} member(s) added`);
+                                                                        setBulkPhonesInline('');
+                                                                        fetchMembers(selectedGroup);
+                                                                    } catch (e: any) {
+                                                                        toast.error(e?.response?.data?.error || 'Bulk add failed');
+                                                                    }
+                                                                    setBulkActionBusy(false);
+                                                                }}
+                                                            >
+                                                                <UserPlus className="w-3.5 h-3.5 mr-1" /> Bulk Add
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="destructive"
+                                                                className="flex-1"
+                                                                disabled={bulkActionBusy || !bulkPhonesInline.trim()}
+                                                                onClick={async () => {
+                                                                    const phones = bulkPhonesInline.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+                                                                    if (!phones.length) return toast.error('No valid phone numbers');
+                                                                    if (!confirm(`Remove ${phones.length} member(s) from ${selectedGroup.name}?`)) return;
+                                                                    setBulkActionBusy(true);
+                                                                    try {
+                                                                        await removeWaGroupMembers(selectedGroup.id, selectedSession, phones);
+                                                                        toast.success(`${phones.length} member(s) removed`);
+                                                                        setBulkPhonesInline('');
+                                                                        fetchMembers(selectedGroup);
+                                                                    } catch (e: any) {
+                                                                        toast.error(e?.response?.data?.error || 'Bulk remove failed');
+                                                                    }
+                                                                    setBulkActionBusy(false);
+                                                                }}
+                                                            >
+                                                                <UserMinus className="w-3.5 h-3.5 mr-1" /> Bulk Remove
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div className="max-h-[500px] overflow-y-auto space-y-1">
                                                     {filteredMembers.length === 0 ? (
                                                         <p className="text-center text-muted-foreground py-8 text-sm">No members found</p>
                                                     ) : (
                                                         filteredMembers.map((m) => {
-                                                            const displayName = m.dbName || m.name || 'Unknown';
+                                                            const waName = m.name || m.pushname || m.notify || '';
+                                                            const dbName = m.dbName || '';
+                                                            const displayName = dbName || waName || m.phone;
                                                             const isSelected = selectedMembers.has(m.phone);
                                                             return (
                                                                 <div
@@ -573,11 +687,14 @@ export function GroupController() {
                                                                                         {m.admin === 'superadmin' ? 'Owner' : 'Admin'}
                                                                                     </span>
                                                                                 )}
+                                                                                {!dbName && waName && (
+                                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 font-medium whitespace-nowrap">واتساب</span>
+                                                                                )}
                                                                             </div>
                                                                             <div className="flex items-center gap-2 mt-0.5">
                                                                                 <span className="text-xs text-muted-foreground font-mono">{m.phone}</span>
-                                                                                {m.dbName && m.name && m.dbName !== m.name && (
-                                                                                    <span className="text-[10px] text-muted-foreground/60">WA: {m.name}</span>
+                                                                                {dbName && waName && dbName !== waName && (
+                                                                                    <span className="text-[10px] text-muted-foreground/60">واتساب: {waName}</span>
                                                                                 )}
                                                                                 {m.dbCompany && (
                                                                                     <span className="text-[10px] text-muted-foreground/60 flex items-center gap-0.5">

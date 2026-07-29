@@ -150,6 +150,12 @@ export const exportAllWaGroups = (sessionId: string) => api.get(`/wa-groups/expo
 export const exportAllWaGroupsCsv = (sessionId: string) => `/api/wa-groups/export-all-csv/${sessionId}`;
 export const exportAllWaGroupsSummaryCsv = (sessionId: string) => `/api/wa-groups/export-all-summary-csv/${sessionId}`;
 
+// Sorting & Auto-categorize
+export const getWaGroupsSorted = (sessionId: string, order: 'asc' | 'desc' = 'desc') =>
+    api.get(`/wa-groups/sorted/${sessionId}`, { params: { order } }).then(r => r.data);
+export const autoCategorizeGroups = (sessionId: string, ranges?: { label: string; min: number; max: number }[]) =>
+    api.post(`/wa-groups/auto-categorize/${sessionId}`, { ranges }).then(r => r.data);
+
 // WhatsApp Group Categories
 export const getWaGroupCategories = () => api.get('/wa-group-categories').then(r => r.data);
 export const createWaGroupCategory = (name: string, description?: string) => api.post('/wa-group-categories', { name, description }).then(r => r.data);

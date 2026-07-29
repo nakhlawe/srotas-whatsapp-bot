@@ -622,6 +622,9 @@ async function enrichContactStore(sock, sessionId, store, lidToPhoneMap) {
                 store.set(c.phone, { phone: c.phone, name: c.name || '' });
             } else if (!existing.name && c.name) {
                 existing.name = c.name;
+            } else if (c.name && existing.name !== c.name) {
+                // Update with latest name from WA sync
+                existing.name = c.name;
             }
         }
     } catch (_) { /* non-fatal */ }

@@ -798,6 +798,57 @@ app.get('/api/wa-groups/export-all-csv/:sessionId', async (req, res) => {
 
 // ─── Group Export Summary (no member details) ───
 
+// ─── Sort groups by member count ───
+app.get('/api/wa-groups/sorted/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { order } = req.query; // 'asc' or 'desc'
+        const groups = await sessionManager.getWhatsAppGroups(sessionId);
+        groups.sort((a, b) => order === 'asc' ? a.participantCount - b.participantCount : b.participantCount - a.participantCount);
+        res.json(groups);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Auto-categorize groups by member count ───
+app.post('/api/wa-groups/auto-categorize/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { ranges } = req.body; // e.g. [{ label: 'Small', min: 0, max: 50 }, ...]
+        const defaultRanges = [
+            { label: 'صغير (1-50)', min: 0, max: 50 },
+            { label: 'متوسط (51-200)', min: 51, max: 200 },
+            { label: 'كبير (201-500)', min: 201, max: 500 },
+            { label: 'كبير جداً (500+)', min: 501, max: Infinity },
+        ];
+        const cats = ranges || defaultRanges;
+        const groups = await sessionManager.getWhatsAppGroups(sessionId);
+        const results = [];
+        for (const cat of cats) {
+            const matching = groups.filter(g => g.participantCount >= cat.min && g.participantCount <= cat.max);
+            if (!matching.length) continue;
+            let categoryId = null;
+            const existing = waGroupCategoriesDb.getAll().find(c => c.name === cat.label);
+            if (existing) {
+                categoryId = existing.id;
+            } else {
+                const r = waGroupCategoriesDb.create(cat.label, `Auto-categorized: ${cat.min}-${cat.max === Infinity ? '+' : cat.max} members`);
+                categoryId = r.lastInsertRowid || r;
+            }
+            for (const g of matching) {
+                try {
+                    waGroupCategoriesDb.addGroup(categoryId, sessionId, g.id, g.name);
+                } catch (_) {}
+            }
+            results.push({ category: cat.label, groupCount: matching.length });
+        }
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/wa-groups/export-all-summary-csv/:sessionId', async (req, res) => {
     try {
         const { sessionId } = req.params;
