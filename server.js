@@ -1424,6 +1424,14 @@ app.get('/api/analytics', (req, res) => {
         const aiAnalytics = autoStats.ai;
         const quickReplyAnalytics = autoStats.quickReply;
 
+        // Group stats
+        let groupStats = { totalCategories: 0, totalGroupsInCategories: 0 };
+        try {
+            const categories = waGroupCategoriesDb.getAll();
+            groupStats.totalCategories = categories.length;
+            groupStats.totalGroupsInCategories = categories.reduce((sum, c) => sum + (c.group_count || 0), 0);
+        } catch (e) { }
+
         const response = {
             stats: {
                 totalMessages,
@@ -1440,7 +1448,8 @@ app.get('/api/analytics', (req, res) => {
             topCampaigns,
             sessions,
             aiAnalytics,
-            quickReplyAnalytics
+            quickReplyAnalytics,
+            groupStats
         };
 
         console.log('[Analytics] Response stats:', response.stats);

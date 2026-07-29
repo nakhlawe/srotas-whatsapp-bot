@@ -116,7 +116,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         );
     }
 
-    const { stats, messagesOverTime, hourlyPattern, aiAnalytics, quickReplyAnalytics, topCampaigns, sessions } = data;
+    const { stats, messagesOverTime, hourlyPattern, aiAnalytics, quickReplyAnalytics, topCampaigns, sessions, groupStats } = data;
 
     const chartData = messagesOverTime?.labels?.map((label: string, i: number) => ({
         name: label,
@@ -357,6 +357,35 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                             </div>
                         ) : (
                             <p className="text-xs text-muted-foreground text-center py-6">No sessions connected</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Groups */}
+                <Card
+                    onClick={() => onNavigate?.('groups')}
+                    className="card-glow cursor-pointer hover:border-primary/50 transition-all active:scale-[0.99] group/card"
+                >
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                            <Users className="w-4 h-4 text-green-400" /> Groups
+                        </CardTitle>
+                        <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover/card:opacity-100 group-hover/card:translate-x-0.5 transition-all text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                        {groupStats ? (
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center p-2.5 rounded-lg bg-secondary/40">
+                                    <span className="text-xs text-muted-foreground">Categories</span>
+                                    <span className="font-bold text-lg">{groupStats.totalCategories}</span>
+                                </div>
+                                <div className="flex justify-between items-center p-2.5 rounded-lg bg-secondary/40">
+                                    <span className="text-xs text-muted-foreground">Groups in Categories</span>
+                                    <span className="font-bold text-lg">{groupStats.totalGroupsInCategories}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground text-center py-6">No group data</p>
                         )}
                     </CardContent>
                 </Card>
