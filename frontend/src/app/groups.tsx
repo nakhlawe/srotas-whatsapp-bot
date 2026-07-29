@@ -71,6 +71,8 @@ export function GroupController() {
     const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
     const [pendingRequestGroups, setPendingRequestGroups] = useState<Map<string, { count: number }>>(new Map());
     const [waContacts, setWaContacts] = useState<Map<string, string>>(new Map());
+    const [page, setPage] = useState(0);
+    const PAGE_SIZE = 50;
     const { socket } = useSocket();
 
     const fetchContacts = async (search = '') => {
@@ -102,6 +104,9 @@ export function GroupController() {
         fetchCategories();
     }, []);
 
+    // Reset page when search changes
+    useEffect(() => { setPage(0); }, [searchGroup]);
+
     const fetchCategories = async () => {
         try {
             const data = await getWaGroupCategories();
@@ -113,6 +118,7 @@ export function GroupController() {
 
     const fetchGroups = async (sessionId: string) => {
         setLoading(true);
+        setPage(0);
         try {
             const data = sortOrder ? await getWaGroupsSorted(sessionId, sortOrder) : await getWaGroups(sessionId);
             setGroups(Array.isArray(data) ? data : (data.value || []));
@@ -523,6 +529,9 @@ export function GroupController() {
         return bPending - aPending;
     });
 
+    const pageCount = Math.max(1, Math.ceil(filteredGroups.length / PAGE_SIZE));
+    const paginatedGroups = filteredGroups.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
     const filteredMembers = members.filter(m =>
         !searchMembers ||
         (m.name && m.name.toLowerCase().includes(searchMembers.toLowerCase())) ||
@@ -560,7 +569,7 @@ export function GroupController() {
                 )}
             </div>
             <div className="space-y-1 max-h-[460px] overflow-y-auto">
-                {filteredGroups.map((g) => (
+                {paginatedGroups.map((g) => (
                     <div key={g.id} className={`flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-secondary/30 transition-colors cursor-pointer ${pendingRequestGroups.has(g.id) ? 'bg-amber-500/5 border border-amber-500/20' : ''}`} onClick={() => fetchMembers(g)}>
                         <input
                             type="checkbox"
@@ -677,6 +686,16 @@ export function GroupController() {
                                 <Card><CardContent className="pt-6 text-center text-muted-foreground">No groups found</CardContent></Card>
                             ) : (
                                 <GroupList />
+                            )}
+                            {filteredGroups.length > PAGE_SIZE && (
+                                <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                                    <span>{filteredGroups.length} groups total</span>
+                                    <div className="flex items-center gap-1">
+                                        <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Prev</Button>
+                                        <span className="px-2">{page + 1} / {pageCount}</span>
+                                        <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
+                                    </div>
+                                </div>
                             )}
                         </div>
 
@@ -910,9 +929,9 @@ export function GroupController() {
                                                         </div>
                                                         <div className="space-y-2 max-h-[200px] overflow-y-auto">
                                                             {joinRequests.map((r: any) => {
-                                                                const jid = r.participant || r.jid || '';
-                                                                const phone = jid.replace('@s.whatsapp.net', '').replace('@c.us', '');
-                                                                const name = r.author || r.name || '';
+                                                                const jid = r.jid || r.participant || '';
+                                                                const phone = r.phone || jid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+                                                                const name = r.name || '';
                                                                 return (
                                                                     <div key={jid} className="flex items-center gap-3 p-2 rounded-lg border bg-secondary/10">
                                                                         <div className="min-w-0 flex-1">
@@ -958,7 +977,7 @@ export function GroupController() {
                                                         </div>
                                                         <div className="flex gap-2 mt-3">
                                                             <Button size="sm" className="text-xs flex-1" onClick={async () => {
-                                                                const jids = joinRequests.map((r: any) => r.participant || r.jid);
+                                                                const jids = joinRequests.map((r: any) => r.jid || r.participant);
                                                                 try {
                                                                     await approveGroupJoinRequests(selectedGroup.id, selectedSession, jids);
                                                                     toast.success(`${jids.length} request(s) approved`);
@@ -970,7 +989,7 @@ export function GroupController() {
                                                                 <Check className="w-3 h-3 mr-1" /> Approve All
                                                             </Button>
                                                             <Button size="sm" variant="destructive" className="text-xs flex-1" onClick={async () => {
-                                                                const jids = joinRequests.map((r: any) => r.participant || r.jid);
+                                                                const jids = joinRequests.map((r: any) => r.jid || r.participant);
                                                                 try {
                                                                     await rejectGroupJoinRequests(selectedGroup.id, selectedSession, jids);
                                                                     toast.success(`${jids.length} request(s) rejected`);

@@ -832,16 +832,24 @@ async function getWhatsAppContacts(sessionId) {
 
 
 async function getWhatsAppGroups(sessionId) {
+    const cacheKey = `groups:${sessionId}`;
+    const cached = groupParticipantsCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 600000) {
+        return cached.data;
+    }
+
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
 
     try {
         const groups = await sock.groupFetchAllParticipating();
-        return Object.values(groups).map(g => ({
+        const result = Object.values(groups).map(g => ({
             id: g.id,
             name: g.subject || g.id,
             participantCount: g.participants ? g.participants.length : 0,
         }));
+        groupParticipantsCache.set(cacheKey, { data: result, ts: Date.now() });
+        return result;
     } catch (error) {
         console.error(`[Session ${sessionId}] Error fetching groups:`, error.message);
         throw error;
@@ -849,10 +857,10 @@ async function getWhatsAppGroups(sessionId) {
 }
 
 async function getGroupParticipants(sessionId, groupId) {
-    // Check cache first (30s TTL)
+    // Check cache first (10 min TTL)
     const cacheKey = `${sessionId}:${groupId}`;
     const cached = groupParticipantsCache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < 30000) {
+    if (cached && Date.now() - cached.ts < 600000) {
         return cached.data;
     }
 
@@ -1072,11 +1080,24 @@ async function getGroupInviteCode(sessionId, groupId) {
 async function getGroupJoinRequests(sessionId, groupId) {
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
-    const store = joinRequestsStore.get(sessionId) || new Map();
-    const cached = store.get(groupId) || [];
+    const store = contactStores.get(sessionId) || new Map();
+    const lidToPhoneMap = await buildLidToPhoneMap(sock);
+    await enrichContactStore(sock, sessionId, store, lidToPhoneMap);
+
+    const resolveParticipant = (p) => {
+        const jid = p.participant || p.jid || '';
+        const phone = extractPhoneFromJid(jid, {}, lidToPhoneMap) || jid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+        const contact = store.get(phone);
+        const name = contact?.name || p.author || p.name || '';
+        return { jid, phone, name, timestamp: p.timestamp || Date.now() };
+    };
+
+    const cachedStore = joinRequestsStore.get(sessionId) || new Map();
+    const cached = (cachedStore.get(groupId) || []).map(resolveParticipant);
     try {
         const pending = await sock.groupRequestParticipantsList(groupId);
-        return { pending, cached };
+        const resolved = pending.map(resolveParticipant);
+        return { pending: resolved, cached };
     } catch (e) {
         return { pending: [], cached };
     }
@@ -1180,20 +1201,44 @@ async function exportAllGroups(sessionId) {
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
 
-    const groups = await sock.groupFetchAllParticipating();
-    const groupIds = Object.keys(groups);
+    const allGroups = await sock.groupFetchAllParticipating();
+    const store = contactStores.get(sessionId) || new Map();
+    const lidToPhoneMap = await buildLidToPhoneMap(sock);
+    await enrichContactStore(sock, sessionId, store, lidToPhoneMap);
 
     const results = [];
-    for (const groupId of groupIds) {
+    for (const [groupId, metadata] of Object.entries(allGroups)) {
         try {
-            const data = await exportGroup(sessionId, groupId);
-            results.push(data);
-        } catch (e) {
+            if (!metadata || !metadata.participants) {
+                results.push({ id: groupId, name: metadata?.subject || groupId, error: 'No participants' });
+                continue;
+            }
+            const participants = metadata.participants
+                .map(p => {
+                    const phone = extractPhoneFromJid(p.jid || p.id, p, lidToPhoneMap);
+                    if (!phone) return null;
+                    const contact = store.get(phone);
+                    const displayName = contact?.name || p.name || p.notify || p.verifiedName || p.pushname || p.pushName || '';
+                    return { phone, name: displayName, isAdmin: p.admin === 'admin' || p.admin === 'superadmin', admin: p.admin || null };
+                })
+                .filter(Boolean);
+            const admins = participants.filter(p => p.isAdmin);
+            const inviteCode = await sock.groupInviteCode(groupId).catch(() => null);
             results.push({
                 id: groupId,
-                name: groups[groupId]?.subject || groupId,
-                error: e.message,
+                name: metadata.subject || groupId,
+                description: metadata.desc || '',
+                creator: metadata.owner || metadata.creator || '',
+                createdAt: metadata.creation ? new Date(metadata.creation * 1000).toISOString() : '',
+                participantCount: participants.length,
+                adminCount: admins.length,
+                inviteCode,
+                inviteLink: inviteCode ? `https://chat.whatsapp.com/${inviteCode}` : '',
+                participants,
+                admins,
             });
+        } catch (e) {
+            results.push({ id: groupId, name: metadata?.subject || groupId, error: e.message });
         }
     }
     return results;
@@ -1203,37 +1248,26 @@ async function exportAllGroupsSummary(sessionId) {
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
 
-    const groups = await sock.groupFetchAllParticipating();
-    const groupIds = Object.keys(groups);
-
+    const allGroups = await sock.groupFetchAllParticipating();
     const results = [];
-    for (const groupId of groupIds) {
+    for (const [groupId, metadata] of Object.entries(allGroups)) {
         try {
-            const metadata = await sock.groupMetadata(groupId);
             if (!metadata || !metadata.participants) {
-                results.push({
-                    id: groupId,
-                    name: groups[groupId]?.subject || groupId,
-                    error: 'No participants',
-                });
+                results.push({ id: groupId, name: metadata?.subject || groupId, error: 'No participants' });
                 continue;
             }
-            const inviteCode = await sock.groupInviteCode(groupId).catch(() => null);
-            const inviteLink = inviteCode ? `https://chat.whatsapp.com/${inviteCode}` : '';
             const admins = metadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin');
+            const inviteCode = await sock.groupInviteCode(groupId).catch(() => null);
             results.push({
                 id: groupId,
                 name: metadata.subject || groupId,
                 participantCount: metadata.participants.length,
                 adminCount: admins.length,
-                inviteLink,
+                inviteCode,
+                inviteLink: inviteCode ? `https://chat.whatsapp.com/${inviteCode}` : '',
             });
         } catch (e) {
-            results.push({
-                id: groupId,
-                name: groups[groupId]?.subject || groupId,
-                error: e.message,
-            });
+            results.push({ id: groupId, name: metadata?.subject || groupId, error: e.message });
         }
     }
     return results;
