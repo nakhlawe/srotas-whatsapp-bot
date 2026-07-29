@@ -684,6 +684,41 @@ app.get('/api/wa-groups/rate-limit', (req, res) => {
     res.json({ count: sessionManager.getGroupActionCount(), limit: 5, window: '1 minute' });
 });
 
+// ─── Group Join Requests ───
+app.get('/api/wa-groups/:groupId/join-requests/:sessionId', async (req, res) => {
+    try {
+        const { sessionId, groupId } = req.params;
+        const result = await sessionManager.getGroupJoinRequests(sessionId, groupId);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/join-requests/approve/:sessionId', async (req, res) => {
+    try {
+        const { sessionId, groupId } = req.params;
+        const { participants } = req.body;
+        if (!participants || !participants.length) return res.status(400).json({ error: 'participants array is required' });
+        const result = await sessionManager.approveGroupJoinRequest(sessionId, groupId, participants);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-groups/:groupId/join-requests/reject/:sessionId', async (req, res) => {
+    try {
+        const { sessionId, groupId } = req.params;
+        const { participants } = req.body;
+        if (!participants || !participants.length) return res.status(400).json({ error: 'participants array is required' });
+        const result = await sessionManager.rejectGroupJoinRequest(sessionId, groupId, participants);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── Group Export ───
 
 app.get('/api/wa-groups/:groupId/export/:sessionId', async (req, res) => {

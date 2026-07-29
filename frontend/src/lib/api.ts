@@ -170,3 +170,8 @@ export const bulkAddToCategoryGroups = (id: number, sessionId: string, participa
 export const bulkRemoveFromCategoryGroups = (id: number, sessionId: string, participants: string[]) => api.post(`/wa-group-categories/${id}/bulk-remove`, { sessionId, participants }).then(r => r.data);
 export const bulkAddToGroups = (sessionId: string, groupIds: string[], participants: string[]) => api.post('/groups/bulk-add', { sessionId, groupIds, participants }).then(r => r.data);
 export const bulkRemoveFromGroups = (sessionId: string, groupIds: string[], participants: string[]) => api.post('/groups/bulk-remove', { sessionId, groupIds, participants }).then(r => r.data);
+
+// Join Requests
+export const getGroupJoinRequests = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/join-requests/${sessionId}`).then(r => r.data);
+export const approveGroupJoinRequests = (groupId: string, sessionId: string, participants: string[]) => api.post(`/wa-groups/${groupId}/join-requests/approve/${sessionId}`, { participants }).then(r => r.data);
+export const rejectGroupJoinRequests = (groupId: string, sessionId: string, participants: string[]) => api.post(`/wa-groups/${groupId}/join-requests/reject/${sessionId}`, { participants }).then(r => r.data);

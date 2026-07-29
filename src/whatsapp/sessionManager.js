@@ -26,6 +26,7 @@ const pendingReconnects = new Map();  // sessionId → auto-reconnect timeout ha
 const contactSyncInFlight = new Map();    // sessionId → Promise (dedupe overlapping personal-contact syncs)
 const groupSyncInFlight = new Map();      // "sessionId:groupId" → Promise (dedupe overlapping group imports)
 const lastFullResyncAttempt = new Map();  // sessionId → timestamp of last resyncAppState fallback
+const joinRequestsStore = new Map();      // sessionId → Map<groupId, Array<{ participant, author, timestamp }>>
 
 // Prune pollMessageStore every 30 minutes (remove entries older than 7 days)
 setInterval(() => {
@@ -451,6 +452,24 @@ async function createClient(sessionId, name, retryCount = 0) {
             } catch (e) {
                 console.error(`[Session ${name}] Poll vote decode error:`, e.message);
             }
+        }
+    });
+
+    // ─── Group join requests (real-time) ───
+    sock.ev.on('group.join-request', (data) => {
+        const { id: groupId, participant, author } = data;
+        const store = joinRequestsStore.get(sessionId) || new Map();
+        const requests = store.get(groupId) || [];
+        requests.push({
+            participant,
+            author,
+            timestamp: Date.now(),
+            notified: false,
+        });
+        store.set(groupId, requests);
+        joinRequestsStore.set(sessionId, store);
+        if (!data.notified && global.io) {
+            global.io.to(`session:${sessionId}`).emit('group.join-request', { sessionId, groupId, requests: requests.length });
         }
     });
 
@@ -1040,6 +1059,41 @@ async function getGroupInviteCode(sessionId, groupId) {
     return await sock.groupInviteCode(groupId);
 }
 
+async function getGroupJoinRequests(sessionId, groupId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    const store = joinRequestsStore.get(sessionId) || new Map();
+    const cached = store.get(groupId) || [];
+    try {
+        const pending = await sock.groupRequestParticipantsList(groupId);
+        return { pending, cached };
+    } catch (e) {
+        return { pending: [], cached };
+    }
+}
+
+async function approveGroupJoinRequest(sessionId, groupId, participantJids) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    const result = await sock.groupRequestParticipantsUpdate(groupId, participantJids, 'approve');
+    const store = joinRequestsStore.get(sessionId) || new Map();
+    const requests = (store.get(groupId) || []).filter(r => !participantJids.includes(r.participant));
+    if (requests.length > 0) store.set(groupId, requests); else store.delete(groupId);
+    joinRequestsStore.set(sessionId, store);
+    return result;
+}
+
+async function rejectGroupJoinRequest(sessionId, groupId, participantJids) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    const result = await sock.groupRequestParticipantsUpdate(groupId, participantJids, 'reject');
+    const store = joinRequestsStore.get(sessionId) || new Map();
+    const requests = (store.get(groupId) || []).filter(r => !participantJids.includes(r.participant));
+    if (requests.length > 0) store.set(groupId, requests); else store.delete(groupId);
+    joinRequestsStore.set(sessionId, store);
+    return result;
+}
+
 async function getGroupMetadataFull(sessionId, groupId) {
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
@@ -1246,6 +1300,9 @@ module.exports = {
     leaveGroup,
     getGroupInviteCode,
     getGroupMetadataFull,
+    getGroupJoinRequests,
+    approveGroupJoinRequest,
+    rejectGroupJoinRequest,
     exportGroup,
     exportAllGroups,
     exportAllGroupsSummary,

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts, getGroupJoinRequests, approveGroupJoinRequests, rejectGroupJoinRequests } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2, FolderTree, FolderPlus, Tag, Check, X, Trash2, Layers, Send, Download, ArrowUpDown, StickyNote, BadgePercent } from 'lucide-react';
+import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2, FolderTree, FolderPlus, Tag, Check, X, Trash2, Layers, Send, Download, ArrowUpDown, StickyNote, BadgePercent, DoorOpen } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSocket } from '@/components/providers/socket-provider';
 
 export function GroupController() {
     const [sessions, setSessions] = useState<any[]>([]);
@@ -66,6 +67,10 @@ export function GroupController() {
     const [categoryDesc, setCategoryDesc] = useState('');
     const [selectedCategoryAssign, setSelectedCategoryAssign] = useState('');
     const [bulkPhones, setBulkPhones] = useState('');
+    const [joinRequests, setJoinRequests] = useState<any[]>([]);
+    const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
+    const [joinRequestsExpanded, setJoinRequestsExpanded] = useState(false);
+    const { socket } = useSocket();
 
     const fetchContacts = async (search = '') => {
         try {
@@ -165,6 +170,40 @@ export function GroupController() {
         setLoadingMembers(false);
     };
 
+    const fetchJoinRequests = async () => {
+        if (!selectedSession || !selectedGroup) return;
+        setJoinRequestsLoading(true);
+        try {
+            const data = await getGroupJoinRequests(selectedGroup.id, selectedSession);
+            const all = [...(data.pending || []), ...(data.cached || [])];
+            const seen = new Set<string>();
+            const unique = all.filter((r: any) => {
+                const key = r.participant || r.jid;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            setJoinRequests(unique);
+        } catch { setJoinRequests([]); }
+        setJoinRequestsLoading(false);
+    };
+
+    useEffect(() => {
+        if (selectedGroup) fetchJoinRequests();
+    }, [selectedGroup]);
+
+    // Real-time socket listener for new join requests
+    useEffect(() => {
+        if (!socket || !selectedSession) return;
+        const handler = (data: any) => {
+            if (data.sessionId === selectedSession && selectedGroup?.id === data.groupId) {
+                fetchJoinRequests();
+            }
+        };
+        socket.on('group.join-request', handler);
+        return () => { socket.off('group.join-request', handler); };
+    }, [socket, selectedSession, selectedGroup?.id]);
+
     const toggleMember = (phone: string) => {
         setSelectedMembers(prev => {
             const next = new Set(prev);
@@ -198,7 +237,8 @@ export function GroupController() {
     const [bulkGroupBusy, setBulkGroupBusy] = useState(false);
 
     const handleBulkGroupAdd = async () => {
-        const phones = bulkGroupPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        const manualPhones = bulkGroupPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        const phones = [...new Set([...Array.from(selectedContacts), ...manualPhones])];
         if (!phones.length || !selectedGroupIds.size) return toast.error('Phone numbers and groups required');
         if (!confirm(`Add ${phones.length} number(s) to ${selectedGroupIds.size} selected group(s)?`)) return;
         setBulkGroupBusy(true);
@@ -217,7 +257,8 @@ export function GroupController() {
     };
 
     const handleBulkGroupRemove = async () => {
-        const phones = bulkGroupPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        const manualPhones = bulkGroupPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        const phones = [...new Set([...Array.from(selectedContacts), ...manualPhones])];
         if (!phones.length || !selectedGroupIds.size) return toast.error('Phone numbers and groups required');
         if (!confirm(`Remove ${phones.length} number(s) from ${selectedGroupIds.size} selected group(s)?`)) return;
         setBulkGroupBusy(true);
@@ -408,9 +449,9 @@ export function GroupController() {
     };
 
     const handleBulkAdd = async () => {
-        if (!bulkPhones.trim() || !selectedCategory) return toast.error('Phone numbers required');
-        const phones = bulkPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
-        if (!phones.length) return toast.error('No valid phone numbers');
+        const manualPhones = bulkPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        const phones = [...new Set([...Array.from(selectedContacts), ...manualPhones])];
+        if (!phones.length || !selectedCategory) return toast.error('Phone numbers required');
         if (!confirm(`Add ${phones.length} number(s) to all ${categoryMembers.length} group(s) in "${selectedCategory.name}"?`)) return;
         try {
             const result = await bulkAddToCategoryGroups(selectedCategory.id, selectedSession, phones);
@@ -419,15 +460,16 @@ export function GroupController() {
             toast.success(`Added to ${ok} group(s)${err ? `, ${err} failed` : ''}`);
             setIsBulkAddOpen(false);
             setBulkPhones('');
+            setSelectedContacts(new Set());
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'Bulk add failed');
         }
     };
 
     const handleBulkRemove = async () => {
-        if (!bulkPhones.trim() || !selectedCategory) return toast.error('Phone numbers required');
-        const phones = bulkPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
-        if (!phones.length) return toast.error('No valid phone numbers');
+        const manualPhones = bulkPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+        const phones = [...new Set([...Array.from(selectedContacts), ...manualPhones])];
+        if (!phones.length || !selectedCategory) return toast.error('Phone numbers required');
         if (!confirm(`Remove ${phones.length} number(s) from all ${categoryMembers.length} group(s) in "${selectedCategory.name}"?`)) return;
         try {
             const result = await bulkRemoveFromCategoryGroups(selectedCategory.id, selectedSession, phones);
@@ -436,6 +478,7 @@ export function GroupController() {
             toast.success(`Removed from ${ok} group(s)${err ? `, ${err} failed` : ''}`);
             setIsBulkRemoveOpen(false);
             setBulkPhones('');
+            setSelectedContacts(new Set());
         } catch (e: any) {
             toast.error(e?.response?.data?.error || 'Bulk remove failed');
         }
@@ -813,6 +856,91 @@ export function GroupController() {
                                                         })
                                                     )}
                                                 </div>
+                                                {joinRequests.length > 0 && (
+                                                    <div className="mt-6 pt-4 border-t">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <DoorOpen className="w-4 h-4 text-amber-500" />
+                                                            <span className="text-sm font-medium">Join Requests ({joinRequests.length})</span>
+                                                            <Button variant="ghost" size="sm" className="text-xs h-6 ml-auto" onClick={fetchJoinRequests}>
+                                                                <RefreshCw className={`w-3 h-3 ${joinRequestsLoading ? 'animate-spin' : ''}`} />
+                                                            </Button>
+                                                        </div>
+                                                        <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                                                            {joinRequests.map((r: any) => {
+                                                                const jid = r.participant || r.jid || '';
+                                                                const phone = jid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+                                                                const name = r.author || r.name || '';
+                                                                return (
+                                                                    <div key={jid} className="flex items-center gap-3 p-2 rounded-lg border bg-secondary/10">
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <p className="text-sm font-medium truncate">{name || phone}</p>
+                                                                            <p className="text-xs text-muted-foreground font-mono">{phone}</p>
+                                                                        </div>
+                                                                        <div className="flex gap-1 flex-shrink-0">
+                                                                            <Button
+                                                                                size="sm"
+                                                                                className="text-xs h-7"
+                                                                                onClick={async () => {
+                                                                                    try {
+                                                                                        await approveGroupJoinRequests(selectedGroup.id, selectedSession, [jid]);
+                                                                                        toast.success('Approved');
+                                                                                        fetchJoinRequests();
+                                                                                    } catch (e: any) {
+                                                                                        toast.error(e?.response?.data?.error || 'Approve failed');
+                                                                                    }
+                                                                                }}
+                                                                            >
+                                                                                <Check className="w-3 h-3 mr-1" /> Accept
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="destructive"
+                                                                                className="text-xs h-7"
+                                                                                onClick={async () => {
+                                                                                    try {
+                                                                                        await rejectGroupJoinRequests(selectedGroup.id, selectedSession, [jid]);
+                                                                                        toast.success('Rejected');
+                                                                                        fetchJoinRequests();
+                                                                                    } catch (e: any) {
+                                                                                        toast.error(e?.response?.data?.error || 'Reject failed');
+                                                                                    }
+                                                                                }}
+                                                                            >
+                                                                                <X className="w-3 h-3 mr-1" /> Reject
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <div className="flex gap-2 mt-3">
+                                                            <Button size="sm" className="text-xs flex-1" onClick={async () => {
+                                                                const jids = joinRequests.map((r: any) => r.participant || r.jid);
+                                                                try {
+                                                                    await approveGroupJoinRequests(selectedGroup.id, selectedSession, jids);
+                                                                    toast.success(`${jids.length} request(s) approved`);
+                                                                    setJoinRequests([]);
+                                                                } catch (e: any) {
+                                                                    toast.error(e?.response?.data?.error || 'Bulk approve failed');
+                                                                }
+                                                            }}>
+                                                                <Check className="w-3 h-3 mr-1" /> Approve All
+                                                            </Button>
+                                                            <Button size="sm" variant="destructive" className="text-xs flex-1" onClick={async () => {
+                                                                const jids = joinRequests.map((r: any) => r.participant || r.jid);
+                                                                try {
+                                                                    await rejectGroupJoinRequests(selectedGroup.id, selectedSession, jids);
+                                                                    toast.success(`${jids.length} request(s) rejected`);
+                                                                    setJoinRequests([]);
+                                                                } catch (e: any) {
+                                                                    toast.error(e?.response?.data?.error || 'Bulk reject failed');
+                                                                }
+                                                            }}>
+                                                                <X className="w-3 h-3 mr-1" /> Reject All
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </>
                                         )}
                                     </CardContent>
@@ -1132,45 +1260,194 @@ export function GroupController() {
             </Dialog>
 
             {/* Bulk Add to Category */}
-            <Dialog open={isBulkAddOpen} onOpenChange={setIsBulkAddOpen}>
-                <DialogContent>
+            <Dialog open={isBulkAddOpen} onOpenChange={(open) => { setIsBulkAddOpen(open); if (open) { setBulkPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Bulk Add Members</DialogTitle><DialogDescription>Add numbers to all groups in "{selectedCategory?.name}"</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
-                        <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkPhones} onChange={(e) => setBulkPhones(e.target.value)} /></div>
-                        <Button onClick={handleBulkAdd} className="w-full"><UserPlus className="w-4 h-4 mr-2" /> Add to {categoryMembers.length} Group(s)</Button>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input placeholder="Search contacts by name or phone..." className="pl-9" value={contactSearch} onChange={(e) => { setContactSearch(e.target.value); fetchContacts(e.target.value); }} />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
+                            {contacts.map((c: any) => {
+                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                return (
+                                    <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                        <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium truncate">{c.name || 'Unknown'}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">{c.phone}{waName && c.name !== waName ? ` — ${waName}` : ''}</p>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {Array.from(selectedContacts).map(phone => {
+                                    const contact = contacts.find((c: any) => c.phone === phone);
+                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const display = contact?.name || waName || phone;
+                                    return (
+                                        <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                                            {display}
+                                            <button onClick={() => toggleContact(phone)} className="hover:text-destructive">&times;</button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div>
+                            <Label>Or enter numbers manually</Label>
+                            <Textarea placeholder="919876543210, 919876543211" rows={2} value={bulkPhones} onChange={(e) => setBulkPhones(e.target.value)} />
+                        </div>
+                        <Button onClick={handleBulkAdd} className="w-full"><UserPlus className="w-4 h-4 mr-2" /> Add {selectedContacts.size > 0 ? selectedContacts.size : '...'} to {categoryMembers.length} Group(s)</Button>
                     </div>
                 </DialogContent>
             </Dialog>
 
             {/* Bulk Remove from Category */}
-            <Dialog open={isBulkRemoveOpen} onOpenChange={setIsBulkRemoveOpen}>
-                <DialogContent>
+            <Dialog open={isBulkRemoveOpen} onOpenChange={(open) => { setIsBulkRemoveOpen(open); if (open) { setBulkPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Bulk Remove Members</DialogTitle><DialogDescription>Remove numbers from all groups in "{selectedCategory?.name}"</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
-                        <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkPhones} onChange={(e) => setBulkPhones(e.target.value)} /></div>
-                        <Button onClick={handleBulkRemove} className="w-full bg-red-600 hover:bg-red-700"><UserMinus className="w-4 h-4 mr-2" /> Remove from {categoryMembers.length} Group(s)</Button>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input placeholder="Search contacts by name or phone..." className="pl-9" value={contactSearch} onChange={(e) => { setContactSearch(e.target.value); fetchContacts(e.target.value); }} />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
+                            {contacts.map((c: any) => {
+                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                return (
+                                    <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                        <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium truncate">{c.name || 'Unknown'}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">{c.phone}{waName && c.name !== waName ? ` — ${waName}` : ''}</p>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {Array.from(selectedContacts).map(phone => {
+                                    const contact = contacts.find((c: any) => c.phone === phone);
+                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const display = contact?.name || waName || phone;
+                                    return (
+                                        <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                                            {display}
+                                            <button onClick={() => toggleContact(phone)} className="hover:text-destructive">&times;</button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div>
+                            <Label>Or enter numbers manually</Label>
+                            <Textarea placeholder="919876543210, 919876543211" rows={2} value={bulkPhones} onChange={(e) => setBulkPhones(e.target.value)} />
+                        </div>
+                        <Button onClick={handleBulkRemove} className="w-full bg-red-600 hover:bg-red-700"><UserMinus className="w-4 h-4 mr-2" /> Remove {selectedContacts.size > 0 ? selectedContacts.size : '...'} from {categoryMembers.length} Group(s)</Button>
                     </div>
                 </DialogContent>
             </Dialog>
 
             {/* Bulk Add to Selected Groups */}
-            <Dialog open={isBulkGroupAddOpen} onOpenChange={setIsBulkGroupAddOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Add to Selected Groups</DialogTitle><DialogDescription>Add numbers to {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
+            <Dialog open={isBulkGroupAddOpen} onOpenChange={(open) => { setIsBulkGroupAddOpen(open); if (open) { setBulkGroupPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader><DialogTitle>Add to Selected Groups</DialogTitle><DialogDescription>Add members to {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
-                        <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkGroupPhones} onChange={(e) => setBulkGroupPhones(e.target.value)} /></div>
-                        <Button onClick={handleBulkGroupAdd} className="w-full" disabled={bulkGroupBusy}><UserPlus className="w-4 h-4 mr-2" /> Add to {selectedGroupIds.size} Group(s)</Button>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input placeholder="Search contacts by name or phone..." className="pl-9" value={contactSearch} onChange={(e) => { setContactSearch(e.target.value); fetchContacts(e.target.value); }} />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
+                            {contacts.map((c: any) => {
+                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                const display = c.name || waName || c.phone;
+                                return (
+                                    <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                        <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium truncate">{c.name || 'Unknown'}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">{c.phone}{waName && c.name !== waName ? ` — ${waName}` : ''}</p>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {Array.from(selectedContacts).map(phone => {
+                                    const contact = contacts.find((c: any) => c.phone === phone);
+                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const display = contact?.name || waName || phone;
+                                    return (
+                                        <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                                            {display}
+                                            <button onClick={() => toggleContact(phone)} className="hover:text-destructive">&times;</button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div>
+                            <Label>Or enter numbers manually</Label>
+                            <Textarea placeholder="919876543210, 919876543211" rows={2} value={bulkGroupPhones} onChange={(e) => setBulkGroupPhones(e.target.value)} />
+                        </div>
+                        <Button onClick={handleBulkGroupAdd} className="w-full" disabled={bulkGroupBusy}><UserPlus className="w-4 h-4 mr-2" /> Add {selectedContacts.size > 0 ? selectedContacts.size : '...'} to {selectedGroupIds.size} Group(s)</Button>
                     </div>
                 </DialogContent>
             </Dialog>
 
             {/* Bulk Remove from Selected Groups */}
-            <Dialog open={isBulkGroupRemoveOpen} onOpenChange={setIsBulkGroupRemoveOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Remove from Selected Groups</DialogTitle><DialogDescription>Remove numbers from {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
+            <Dialog open={isBulkGroupRemoveOpen} onOpenChange={(open) => { setIsBulkGroupRemoveOpen(open); if (open) { setBulkGroupPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader><DialogTitle>Remove from Selected Groups</DialogTitle><DialogDescription>Remove members from {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
-                        <div><Label>Phone Numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={4} value={bulkGroupPhones} onChange={(e) => setBulkGroupPhones(e.target.value)} /></div>
-                        <Button onClick={handleBulkGroupRemove} className="w-full bg-red-600 hover:bg-red-700" disabled={bulkGroupBusy}><UserMinus className="w-4 h-4 mr-2" /> Remove from {selectedGroupIds.size} Group(s)</Button>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input placeholder="Search contacts by name or phone..." className="pl-9" value={contactSearch} onChange={(e) => { setContactSearch(e.target.value); fetchContacts(e.target.value); }} />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
+                            {contacts.map((c: any) => {
+                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                return (
+                                    <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                        <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium truncate">{c.name || 'Unknown'}</p>
+                                            <p className="text-xs text-muted-foreground font-mono">{c.phone}{waName && c.name !== waName ? ` — ${waName}` : ''}</p>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                                {Array.from(selectedContacts).map(phone => {
+                                    const contact = contacts.find((c: any) => c.phone === phone);
+                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const display = contact?.name || waName || phone;
+                                    return (
+                                        <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                                            {display}
+                                            <button onClick={() => toggleContact(phone)} className="hover:text-destructive">&times;</button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div>
+                            <Label>Or enter numbers manually</Label>
+                            <Textarea placeholder="919876543210, 919876543211" rows={2} value={bulkGroupPhones} onChange={(e) => setBulkGroupPhones(e.target.value)} />
+                        </div>
+                        <Button onClick={handleBulkGroupRemove} className="w-full bg-red-600 hover:bg-red-700" disabled={bulkGroupBusy}><UserMinus className="w-4 h-4 mr-2" /> Remove {selectedContacts.size > 0 ? selectedContacts.size : '...'} from {selectedGroupIds.size} Group(s)</Button>
                     </div>
                 </DialogContent>
             </Dialog>
