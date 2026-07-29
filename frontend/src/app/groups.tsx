@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts, getGroupJoinRequests, approveGroupJoinRequests, rejectGroupJoinRequests, getGroupsWithPendingRequests } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupsSorted, autoCategorizeGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, bulkAddToGroups, bulkRemoveFromGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts, getGroupJoinRequests, approveGroupJoinRequests, rejectGroupJoinRequests, getGroupsWithPendingRequests, syncWhatsAppContacts } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,6 +70,7 @@ export function GroupController() {
     const [joinRequests, setJoinRequests] = useState<any[]>([]);
     const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
     const [pendingRequestGroups, setPendingRequestGroups] = useState<Map<string, { count: number }>>(new Map());
+    const [waContacts, setWaContacts] = useState<Map<string, string>>(new Map());
     const { socket } = useSocket();
 
     const fetchContacts = async (search = '') => {
@@ -130,6 +131,21 @@ export function GroupController() {
                 for (const g of data.groups) map.set(g.groupId, { count: g.count });
             }
             setPendingRequestGroups(map);
+        } catch {}
+    };
+
+    const fetchWaContacts = async (sessionId: string) => {
+        try {
+            const data = await syncWhatsAppContacts(sessionId);
+            const map = new Map<string, string>();
+            if (Array.isArray(data)) {
+                for (const c of data) {
+                    if (c.phone && (c.name || c.pushname || c.notify)) {
+                        map.set(c.phone, c.name || c.pushname || c.notify);
+                    }
+                }
+            }
+            setWaContacts(map);
         } catch {}
     };
 
@@ -620,7 +636,7 @@ export function GroupController() {
                 <CardContent className="pt-4 pb-4">
                     <div className="flex items-center gap-4">
                         <Label className="text-sm font-medium whitespace-nowrap">Device:</Label>
-                        <Select value={selectedSession} onValueChange={(v) => { if (v) { setSelectedSession(v); fetchGroups(v); } }}>
+                        <Select value={selectedSession} onValueChange={(v) => { if (v) { setSelectedSession(v); fetchGroups(v); fetchWaContacts(v); } }}>
                             <SelectTrigger className="w-[300px]">
                                 <SelectValue placeholder="Select a session" />
                             </SelectTrigger>
@@ -1298,7 +1314,7 @@ export function GroupController() {
                         <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
                             {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
                             {contacts.map((c: any) => {
-                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                const waName = waContacts.get(c.phone) || c.pushname || c.notify || '';
                                 return (
                                     <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
                                         <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
@@ -1314,7 +1330,7 @@ export function GroupController() {
                             <div className="flex flex-wrap gap-1.5">
                                 {Array.from(selectedContacts).map(phone => {
                                     const contact = contacts.find((c: any) => c.phone === phone);
-                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const waName = waContacts.get(phone) || '';
                                     const display = contact?.name || waName || phone;
                                     return (
                                         <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
@@ -1346,7 +1362,7 @@ export function GroupController() {
                         <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
                             {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
                             {contacts.map((c: any) => {
-                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                const waName = waContacts.get(c.phone) || c.pushname || c.notify || '';
                                 return (
                                     <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
                                         <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
@@ -1362,7 +1378,7 @@ export function GroupController() {
                             <div className="flex flex-wrap gap-1.5">
                                 {Array.from(selectedContacts).map(phone => {
                                     const contact = contacts.find((c: any) => c.phone === phone);
-                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const waName = waContacts.get(phone) || '';
                                     const display = contact?.name || waName || phone;
                                     return (
                                         <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
@@ -1394,7 +1410,7 @@ export function GroupController() {
                         <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
                             {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
                             {contacts.map((c: any) => {
-                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                const waName = waContacts.get(c.phone) || c.pushname || c.notify || '';
                                 const display = c.name || waName || c.phone;
                                 return (
                                     <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
@@ -1411,7 +1427,7 @@ export function GroupController() {
                             <div className="flex flex-wrap gap-1.5">
                                 {Array.from(selectedContacts).map(phone => {
                                     const contact = contacts.find((c: any) => c.phone === phone);
-                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const waName = waContacts.get(phone) || '';
                                     const display = contact?.name || waName || phone;
                                     return (
                                         <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
@@ -1443,7 +1459,7 @@ export function GroupController() {
                         <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
                             {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
                             {contacts.map((c: any) => {
-                                const waName = members.find((m: any) => m.phone === c.phone)?.name || '';
+                                const waName = waContacts.get(c.phone) || c.pushname || c.notify || '';
                                 return (
                                     <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
                                         <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
@@ -1459,7 +1475,7 @@ export function GroupController() {
                             <div className="flex flex-wrap gap-1.5">
                                 {Array.from(selectedContacts).map(phone => {
                                     const contact = contacts.find((c: any) => c.phone === phone);
-                                    const waName = members.find((m: any) => m.phone === phone)?.name || '';
+                                    const waName = waContacts.get(phone) || '';
                                     const display = contact?.name || waName || phone;
                                     return (
                                         <span key={phone} className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
