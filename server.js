@@ -1726,6 +1726,7 @@ CRITICAL INSTRUCTIONS FOR AI:
         has_company_logo: !!(all.company_logo_path && fs.existsSync(all.company_logo_path)),
         image_generation_prompt: all.image_generation_prompt || '',
         admin_phones: all.admin_phones || '',
+        app_name: all.app_name || 'AJM.bot',
         company_name: all.company_name || '',
         company_field: all.company_field || '',
         company_description: all.company_description || '',
@@ -1736,7 +1737,7 @@ CRITICAL INSTRUCTIONS FOR AI:
 });
 
 app.put('/api/settings', (req, res) => {
-    const allowed = ['theme', 'ai_provider', 'ai_model', 'ai_image_model', 'ai_chat_history', 'ai_chat_history_limit', 'ai_use_system_prompt', 'system_prompt', 'image_generation_prompt', 'min_delay', 'max_delay', 'gemini_api_key', 'openai_api_key', 'anti_ban_enabled', 'anti_ban_ignore_bots', 'anti_ban_cooldown_sec', 'anti_ban_typing_delay_min', 'anti_ban_typing_delay_max', 'admin_phones', 'company_name', 'company_field', 'company_description', 'company_email', 'company_website', 'company_hours'];
+    const allowed = ['theme', 'ai_provider', 'ai_model', 'ai_image_model', 'ai_chat_history', 'ai_chat_history_limit', 'ai_use_system_prompt', 'system_prompt', 'image_generation_prompt', 'min_delay', 'max_delay', 'gemini_api_key', 'openai_api_key', 'anti_ban_enabled', 'anti_ban_ignore_bots', 'anti_ban_cooldown_sec', 'anti_ban_typing_delay_min', 'anti_ban_typing_delay_max', 'admin_phones', 'app_name', 'company_name', 'company_field', 'company_description', 'company_email', 'company_website', 'company_hours'];
     for (const key of allowed) {
         if (req.body[key] !== undefined && req.body[key] !== '••••••••') {
             settingsDb.set(key, req.body[key]);
