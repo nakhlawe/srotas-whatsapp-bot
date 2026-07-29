@@ -1119,6 +1119,46 @@ async function exportAllGroups(sessionId) {
     return results;
 }
 
+async function exportAllGroupsSummary(sessionId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+
+    const groups = await sock.groupFetchAllParticipating();
+    const groupIds = Object.keys(groups);
+
+    const results = [];
+    for (const groupId of groupIds) {
+        try {
+            const metadata = await sock.groupMetadata(groupId);
+            if (!metadata || !metadata.participants) {
+                results.push({
+                    id: groupId,
+                    name: groups[groupId]?.subject || groupId,
+                    error: 'No participants',
+                });
+                continue;
+            }
+            const inviteCode = await sock.groupInviteCode(groupId).catch(() => null);
+            const inviteLink = inviteCode ? `https://chat.whatsapp.com/${inviteCode}` : '';
+            const admins = metadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin');
+            results.push({
+                id: groupId,
+                name: metadata.subject || groupId,
+                participantCount: metadata.participants.length,
+                adminCount: admins.length,
+                inviteLink,
+            });
+        } catch (e) {
+            results.push({
+                id: groupId,
+                name: groups[groupId]?.subject || groupId,
+                error: e.message,
+            });
+        }
+    }
+    return results;
+}
+
 // ═══════════════════════════════════════
 // Getters & Setters
 // ═══════════════════════════════════════
@@ -1205,6 +1245,7 @@ module.exports = {
     getGroupMetadataFull,
     exportGroup,
     exportAllGroups,
+    exportAllGroupsSummary,
     getGroupActionCount,
     // Utility exports for other modules
     extractMessageText,

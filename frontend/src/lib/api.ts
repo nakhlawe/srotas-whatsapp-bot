@@ -148,6 +148,7 @@ export const getWaGroupParticipantsDetailed = (groupId: string, sessionId: strin
 export const exportWaGroup = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/export/${sessionId}`).then(r => r.data);
 export const exportAllWaGroups = (sessionId: string) => api.get(`/wa-groups/export-all/${sessionId}`).then(r => r.data);
 export const exportAllWaGroupsCsv = (sessionId: string) => `/api/wa-groups/export-all-csv/${sessionId}`;
+export const exportAllWaGroupsSummaryCsv = (sessionId: string) => `/api/wa-groups/export-all-summary-csv/${sessionId}`;
 
 // WhatsApp Group Categories
 export const getWaGroupCategories = () => api.get('/wa-group-categories').then(r => r.data);

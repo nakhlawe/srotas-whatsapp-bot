@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -374,9 +374,14 @@ export function GroupController() {
                     <Button variant="outline" onClick={() => fetchGroups(selectedSession)} disabled={!selectedSession || loading}>
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
                     </Button>
-                    <Button variant="outline" onClick={() => selectedSession && window.open(exportAllWaGroupsCsv(selectedSession), '_blank')} disabled={!selectedSession}>
-                        <Download className="w-4 h-4 mr-2" /> Export All
-                    </Button>
+                    <div className="flex gap-1">
+                        <Button variant="outline" onClick={() => selectedSession && window.open(exportAllWaGroupsCsv(selectedSession), '_blank')} disabled={!selectedSession} title="Members + phones + invite link">
+                            <Download className="w-4 h-4 mr-1" /> Export Full
+                        </Button>
+                        <Button variant="outline" onClick={() => selectedSession && window.open(exportAllWaGroupsSummaryCsv(selectedSession), '_blank')} disabled={!selectedSession} title="Just names, counts & invite link">
+                            <Download className="w-3.5 h-3.5 mr-1" /> Summary
+                        </Button>
+                    </div>
                     <Button onClick={() => setIsCreateOpen(true)} disabled={!selectedSession}>
                         <Plus className="w-4 h-4 mr-2" /> Create Group
                     </Button>
@@ -462,9 +467,11 @@ export function GroupController() {
                                                         <UserMinus className="w-3.5 h-3.5 mr-1" /> Remove
                                                     </Button>
                                                 )}
-                                                <Button variant="outline" size="sm" onClick={() => selectedSession && window.open(`/api/wa-groups/${selectedGroup.id}/export/${selectedSession}`, '_blank')}>
-                                                    <Download className="w-3.5 h-3.5 mr-1" /> Export
-                                                </Button>
+                                                <div className="flex gap-1">
+                                                    <Button variant="outline" size="sm" onClick={() => selectedSession && window.open(`/api/wa-groups/${selectedGroup.id}/export/${selectedSession}`, '_blank')} title="Members + phones">
+                                                        <Download className="w-3.5 h-3.5 mr-1" /> Full
+                                                    </Button>
+                                                </div>
                                                 <Button variant="outline" size="sm" onClick={handleGetInvite}>
                                                     <Link className="w-3.5 h-3.5 mr-1" /> Invite
                                                 </Button>
