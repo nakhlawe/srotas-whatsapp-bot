@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv, exportAllWaGroupsSummaryCsv, getContacts } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,12 +49,34 @@ export function GroupController() {
     const [createName, setCreateName] = useState('');
     const [createPhones, setCreatePhones] = useState('');
     const [renameName, setRenameName] = useState('');
+
+    // Contact picker
+    const [contacts, setContacts] = useState<any[]>([]);
+    const [contactSearch, setContactSearch] = useState('');
+    const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
     const [inviteLink, setInviteLink] = useState('');
     const [searchMembers, setSearchMembers] = useState('');
     const [categoryName, setCategoryName] = useState('');
     const [categoryDesc, setCategoryDesc] = useState('');
     const [selectedCategoryAssign, setSelectedCategoryAssign] = useState('');
     const [bulkPhones, setBulkPhones] = useState('');
+
+    const fetchContacts = async (search = '') => {
+        try {
+            const data = await getContacts('', search);
+            setContacts(data.contacts || []);
+        } catch { }
+    };
+
+    const toggleContact = (phone: string) => {
+        setSelectedContacts(prev => {
+            const next = new Set(prev);
+            if (next.has(phone)) next.delete(phone); else next.add(phone);
+            return next;
+        });
+    };
+
+    const getSelectedPhonesFromContacts = () => Array.from(selectedContacts);
 
     useEffect(() => {
         getSessions().then(s => {
@@ -468,8 +490,11 @@ export function GroupController() {
                                                     </Button>
                                                 )}
                                                 <div className="flex gap-1">
-                                                    <Button variant="outline" size="sm" onClick={() => selectedSession && window.open(`/api/wa-groups/${selectedGroup.id}/export/${selectedSession}`, '_blank')} title="Members + phones">
+                                                    <Button variant="outline" size="sm" onClick={() => selectedSession && window.open(`/api/wa-groups/${selectedGroup.id}/export-csv/${selectedSession}`, '_blank')} title="Members + phones">
                                                         <Download className="w-3.5 h-3.5 mr-1" /> Full
+                                                    </Button>
+                                                    <Button variant="outline" size="sm" onClick={() => selectedSession && window.open(`/api/wa-groups/${selectedGroup.id}/export-summary-csv/${selectedSession}`, '_blank')} title="Counts + invite link only">
+                                                        <Download className="w-3.5 h-3.5 mr-1" /> Summary
                                                     </Button>
                                                 </div>
                                                 <Button variant="outline" size="sm" onClick={handleGetInvite}>
@@ -706,35 +731,122 @@ export function GroupController() {
             {/* ─── DIALOGS ─── */}
 
             {/* Add Member */}
-            <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
-                <DialogContent>
+            <Dialog open={isAddMemberOpen} onOpenChange={(open) => { setIsAddMemberOpen(open); if (open) { setAddPhone(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Add Member to {selectedGroup?.name}</DialogTitle></DialogHeader>
                     <div className="space-y-4 mt-4">
-                        <div><Label>Phone Number</Label><Input placeholder="919876543210" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddMember()} /></div>
-                        <Button onClick={handleAddMember} className="w-full">Add Member</Button>
+                        <div>
+                            <Label>Manually enter number</Label>
+                            <Input placeholder="919876543210" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddMember()} />
+                        </div>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <Search className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            <Input placeholder="Search contacts..." className="pl-9" value={contactSearch} onChange={(e) => { setContactSearch(e.target.value); fetchContacts(e.target.value); }} />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
+                            {contacts.map((c: any) => (
+                                <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                    <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
+                                    <span className="font-medium">{c.name || 'Unknown'}</span>
+                                    <span className="text-muted-foreground ml-auto">{c.phone}</span>
+                                </label>
+                            ))}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <p className="text-xs text-muted-foreground">{selectedContacts.size} contact(s) selected</p>
+                        )}
+                        <Button onClick={() => {
+                            const manualPhone = addPhone.replace(/[^0-9]/g, '');
+                            const phones = [...getSelectedPhonesFromContacts(), ...(manualPhone ? [manualPhone] : [])];
+                            if (phones.length === 0) return toast.error('Select contacts or enter a phone number');
+                            addWaGroupMembers(selectedGroup.id, selectedSession, phones).then(() => {
+                                toast.success(`${phones.length} member(s) added`);
+                                setIsAddMemberOpen(false);
+                                fetchMembers(selectedGroup);
+                            }).catch((e: any) => toast.error(e?.response?.data?.error || 'Failed'));
+                        }} className="w-full">Add {selectedContacts.size > 0 ? `${selectedContacts.size} Contact(s)` : ''} {addPhone ? '+ Manual' : ''}</Button>
                     </div>
                 </DialogContent>
             </Dialog>
 
             {/* Remove Member */}
-            <Dialog open={isRemoveMemberOpen} onOpenChange={setIsRemoveMemberOpen}>
-                <DialogContent>
+            <Dialog open={isRemoveMemberOpen} onOpenChange={(open) => { setIsRemoveMemberOpen(open); if (open) { setRemovePhone(''); setSelectedContacts(new Set()); } }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Remove Member from {selectedGroup?.name}</DialogTitle></DialogHeader>
                     <div className="space-y-4 mt-4">
-                        <div><Label>Phone Number</Label><Input placeholder="919876543210" value={removePhone} onChange={(e) => setRemovePhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRemoveSingle(removePhone)} /></div>
-                        <Button onClick={() => { handleRemoveSingle(removePhone); setIsRemoveMemberOpen(false); }} className="w-full bg-red-600 hover:bg-red-700">Remove Member</Button>
+                        <div>
+                            <Label>Manually enter number</Label>
+                            <Input placeholder="919876543210" value={removePhone} onChange={(e) => setRemovePhone(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRemoveSingle(removePhone)} />
+                        </div>
+                        <div><Label>Or select from group members</Label></div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {members.length === 0 && <p className="text-sm text-muted-foreground p-2">No members loaded</p>}
+                            {members.filter(m => !m.isAdmin).map((m: any) => (
+                                <label key={m.phone} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                    <input type="checkbox" className="accent-primary" checked={selectedContacts.has(m.phone)} onChange={() => toggleContact(m.phone)} />
+                                    <span className="font-medium">{m.name || m.dbName || 'Unknown'}</span>
+                                    <span className="text-muted-foreground ml-auto">{m.phone}</span>
+                                </label>
+                            ))}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <p className="text-xs text-muted-foreground">{selectedContacts.size} member(s) selected</p>
+                        )}
+                        <Button onClick={() => {
+                            const manualPhone = removePhone.replace(/[^0-9]/g, '');
+                            const phones = [...getSelectedPhonesFromContacts(), ...(manualPhone ? [manualPhone] : [])];
+                            if (phones.length === 0) return toast.error('Select members or enter a phone number');
+                            if (!confirm(`Remove ${phones.length} member(s) from ${selectedGroup.name}?`)) return;
+                            removeWaGroupMembers(selectedGroup.id, selectedSession, phones).then(() => {
+                                toast.success(`${phones.length} member(s) removed`);
+                                setIsRemoveMemberOpen(false);
+                                fetchMembers(selectedGroup);
+                            }).catch((e: any) => toast.error(e?.response?.data?.error || 'Failed'));
+                        }} className="w-full bg-red-600 hover:bg-red-700">Remove {selectedContacts.size > 0 ? `${selectedContacts.size} Member(s)` : ''} {removePhone ? '+ Manual' : ''}</Button>
                     </div>
                 </DialogContent>
             </Dialog>
 
             {/* Create Group */}
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent>
+            <Dialog open={isCreateOpen} onOpenChange={(open) => { setIsCreateOpen(open); if (open) { setCreateName(''); setCreatePhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+                <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Create New Group</DialogTitle></DialogHeader>
                     <div className="space-y-4 mt-4">
                         <div><Label>Group Name</Label><Input placeholder="My New Group" value={createName} onChange={(e) => setCreateName(e.target.value)} /></div>
-                        <div><Label>Members (comma separated)</Label><Textarea placeholder={"919876543210, 919876543211"} rows={4} value={createPhones} onChange={(e) => setCreatePhones(e.target.value)} /></div>
-                        <Button onClick={handleCreateGroup} className="w-full">Create Group</Button>
+                        <div><Label>Manually enter numbers (comma separated)</Label><Textarea placeholder="919876543210, 919876543211" rows={3} value={createPhones} onChange={(e) => setCreatePhones(e.target.value)} /></div>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <Search className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            <Input placeholder="Search contacts..." className="pl-9" value={contactSearch} onChange={(e) => { setContactSearch(e.target.value); fetchContacts(e.target.value); }} />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                            {contacts.length === 0 && <p className="text-sm text-muted-foreground p-2">No contacts found</p>}
+                            {contacts.map((c: any) => (
+                                <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                                    <input type="checkbox" className="accent-primary" checked={selectedContacts.has(c.phone)} onChange={() => toggleContact(c.phone)} />
+                                    <span className="font-medium">{c.name || 'Unknown'}</span>
+                                    <span className="text-muted-foreground ml-auto">{c.phone}</span>
+                                </label>
+                            ))}
+                        </div>
+                        {selectedContacts.size > 0 && (
+                            <p className="text-xs text-muted-foreground">{selectedContacts.size} contact(s) selected</p>
+                        )}
+                        <Button onClick={() => {
+                            if (!createName.trim()) return toast.error('Group name required');
+                            const manualPhones = createPhones.split(',').map(p => p.replace(/[^0-9]/g, '')).filter(Boolean);
+                            const phones = [...getSelectedPhonesFromContacts(), ...manualPhones];
+                            if (phones.length === 0) return toast.error('Select contacts or enter phone numbers');
+                            createWaGroup(selectedSession, createName, phones).then(() => {
+                                toast.success(`Group "${createName}" created!`);
+                                setIsCreateOpen(false);
+                                fetchGroups(selectedSession);
+                            }).catch((e: any) => toast.error(e?.response?.data?.error || 'Failed'));
+                        }} className="w-full">Create Group with {selectedContacts.size + createPhones.split(',').filter(p => p.replace(/[^0-9]/g, '')).length} Member(s)</Button>
                     </div>
                 </DialogContent>
             </Dialog>

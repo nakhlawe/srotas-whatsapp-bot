@@ -696,6 +696,54 @@ app.get('/api/wa-groups/:groupId/export/:sessionId', async (req, res) => {
     }
 });
 
+app.get('/api/wa-groups/:groupId/export-summary-csv/:sessionId', async (req, res) => {
+    try {
+        const { sessionId, groupId } = req.params;
+        const state = sessionManager.getSessionState(sessionId);
+        if (state.status !== 'ready') {
+            return res.status(400).json({ error: `Session is not ready (status: ${state.status})` });
+        }
+        const data = await sessionManager.exportGroup(sessionId, groupId);
+
+        let csv = 'group_name,member_count,admin_count,invite_link\n';
+        const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+        csv += `${esc(data.name)},${data.participantCount},${data.adminCount},${esc(data.inviteLink)}\n`;
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment(`${data.name}-summary-${Date.now()}.csv`);
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-groups/:groupId/export-csv/:sessionId', async (req, res) => {
+    try {
+        const { sessionId, groupId } = req.params;
+        const state = sessionManager.getSessionState(sessionId);
+        if (state.status !== 'ready') {
+            return res.status(400).json({ error: `Session is not ready (status: ${state.status})` });
+        }
+        const data = await sessionManager.exportGroup(sessionId, groupId);
+
+        let csv = 'member_phone,member_name,is_admin,invite_link\n';
+        const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+        if (data.participants && data.participants.length > 0) {
+            for (const p of data.participants) {
+                csv += `${esc(p.phone)},${esc(p.name)},${p.isAdmin ? 'Yes' : 'No'},${esc(data.inviteLink)}\n`;
+            }
+        } else {
+            csv += `${esc(data.name)} group has no members\n`;
+        }
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment(`${data.name}-export-${Date.now()}.csv`);
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/wa-groups/export-all/:sessionId', async (req, res) => {
     try {
         const { sessionId } = req.params;
