@@ -726,11 +726,14 @@ app.get('/api/wa-groups/:groupId/export-csv/:sessionId', async (req, res) => {
         }
         const data = await sessionManager.exportGroup(sessionId, groupId);
 
-        let csv = 'member_phone,member_name,is_admin,invite_link\n';
+        let csv = 'member_phone,member_name,db_name,is_admin,invite_link\n';
         const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
         if (data.participants && data.participants.length > 0) {
             for (const p of data.participants) {
-                csv += `${esc(p.phone)},${esc(p.name)},${p.isAdmin ? 'Yes' : 'No'},${esc(data.inviteLink)}\n`;
+                const dbContact = contactsDb.getByPhone(p.phone);
+                const dbName = dbContact ? (dbContact.name || '') : '';
+                const bestName = dbName || p.name;
+                csv += `${esc(p.phone)},${esc(p.name)},${esc(dbName)},${p.isAdmin ? 'Yes' : 'No'},${esc(data.inviteLink)}\n`;
             }
         } else {
             csv += `${esc(data.name)} group has no members\n`;
@@ -767,7 +770,7 @@ app.get('/api/wa-groups/export-all-csv/:sessionId', async (req, res) => {
         }
         const groups = await sessionManager.exportAllGroups(sessionId);
 
-        let csv = 'group_name,group_id,member_count,admin_count,invite_link,creator,created_at,member_phone,member_name,is_admin\n';
+        let csv = 'group_name,group_id,member_count,admin_count,invite_link,creator,created_at,member_phone,member_name,db_name,is_admin\n';
         const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
         for (const g of groups) {
             if (g.error) {
@@ -776,10 +779,12 @@ app.get('/api/wa-groups/export-all-csv/:sessionId', async (req, res) => {
             }
             if (g.participants && g.participants.length > 0) {
                 for (const p of g.participants) {
-                    csv += `${esc(g.name)},${esc(g.id)},${g.participantCount},${g.adminCount},${esc(g.inviteLink)},${esc(g.creator)},${esc(g.createdAt)},${esc(p.phone)},${esc(p.name)},${p.isAdmin ? 'Yes' : 'No'}\n`;
+                    const dbContact = contactsDb.getByPhone(p.phone);
+                    const dbName = dbContact ? (dbContact.name || '') : '';
+                    csv += `${esc(g.name)},${esc(g.id)},${g.participantCount},${g.adminCount},${esc(g.inviteLink)},${esc(g.creator)},${esc(g.createdAt)},${esc(p.phone)},${esc(p.name)},${esc(dbName)},${p.isAdmin ? 'Yes' : 'No'}\n`;
                 }
             } else {
-                csv += `${esc(g.name)},${esc(g.id)},${g.participantCount},${g.adminCount},${esc(g.inviteLink)},${esc(g.creator)},${esc(g.createdAt)},,,,\n`;
+                csv += `${esc(g.name)},${esc(g.id)},${g.participantCount},${g.adminCount},${esc(g.inviteLink)},${esc(g.creator)},${esc(g.createdAt)},,,,,\n`;
             }
         }
 
