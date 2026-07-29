@@ -12,7 +12,7 @@ const pino = require('pino');
 const { randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { sessions: sessionDb, messages: messagesDb, waContacts: waContactsDb, db: rawDb } = require('../db/database');
+const { sessions: sessionDb, messages: messagesDb, waContacts: waContactsDb, db: rawDb, groupActivityLog } = require('../db/database');
 
 // ═══════════════════════════════════════
 // In-memory state
@@ -990,6 +990,7 @@ async function createGroup(sessionId, subject, participants) {
         return `${clean}@s.whatsapp.net`;
     });
     const result = await sock.groupCreate(subject, jids);
+    try { groupActivityLog.log(sessionId, result.id, result.subject, 'create_group', `${jids.length} members`); } catch (_) {}
     return { id: result.id, name: result.subject, participants: jids.length };
 }
 
@@ -1004,6 +1005,7 @@ async function addGroupParticipants(sessionId, groupId, participants) {
         return `${clean}@s.whatsapp.net`;
     });
     const result = await sock.groupParticipantsUpdate(groupId, jids, 'add');
+    try { groupActivityLog.log(sessionId, groupId, '', 'add_member', `${jids.length} member(s) added`); } catch (_) {}
     return result;
 }
 
@@ -1018,6 +1020,7 @@ async function removeGroupParticipants(sessionId, groupId, participants) {
         return `${clean}@s.whatsapp.net`;
     });
     const result = await sock.groupParticipantsUpdate(groupId, jids, 'remove');
+    try { groupActivityLog.log(sessionId, groupId, '', 'remove_member', `${jids.length} member(s) removed`); } catch (_) {}
     return result;
 }
 
@@ -1031,7 +1034,9 @@ async function promoteGroupParticipants(sessionId, groupId, participants) {
         const clean = String(p).replace(/[^0-9]/g, '');
         return `${clean}@s.whatsapp.net`;
     });
-    return await sock.groupParticipantsUpdate(groupId, jids, 'promote');
+    const result = await sock.groupParticipantsUpdate(groupId, jids, 'promote');
+    try { groupActivityLog.log(sessionId, groupId, '', 'promote_member', `${jids.length} member(s) promoted`); } catch (_) {}
+    return result;
 }
 
 async function demoteGroupParticipants(sessionId, groupId, participants) {
@@ -1044,7 +1049,9 @@ async function demoteGroupParticipants(sessionId, groupId, participants) {
         const clean = String(p).replace(/[^0-9]/g, '');
         return `${clean}@s.whatsapp.net`;
     });
-    return await sock.groupParticipantsUpdate(groupId, jids, 'demote');
+    const result = await sock.groupParticipantsUpdate(groupId, jids, 'demote');
+    try { groupActivityLog.log(sessionId, groupId, '', 'demote_member', `${jids.length} member(s) demoted`); } catch (_) {}
+    return result;
 }
 
 async function renameGroup(sessionId, groupId, newSubject) {
@@ -1053,7 +1060,9 @@ async function renameGroup(sessionId, groupId, newSubject) {
     if (!isGroupActionAllowed()) {
         throw new Error(`Rate limit: max ${GROUP_ACTION_LIMIT} group actions per minute. Wait and try again.`);
     }
-    return await sock.groupUpdateSubject(groupId, newSubject);
+    const result = await sock.groupUpdateSubject(groupId, newSubject);
+    try { groupActivityLog.log(sessionId, groupId, '', 'rename_group', `renamed to "${newSubject}"`); } catch (_) {}
+    return result;
 }
 
 async function updateGroupDescription(sessionId, groupId, description) {
@@ -1068,7 +1077,9 @@ async function updateGroupDescription(sessionId, groupId, description) {
 async function leaveGroup(sessionId, groupId) {
     const sock = clients.get(sessionId);
     if (!sock) throw new Error('Session not found or not connected');
-    return await sock.groupLeave(groupId);
+    const result = await sock.groupLeave(groupId);
+    try { groupActivityLog.log(sessionId, groupId, '', 'leave_group', 'bot left the group'); } catch (_) {}
+    return result;
 }
 
 async function getGroupInviteCode(sessionId, groupId) {
@@ -1111,6 +1122,7 @@ async function approveGroupJoinRequest(sessionId, groupId, participantJids) {
     const requests = (store.get(groupId) || []).filter(r => !participantJids.includes(r.participant));
     if (requests.length > 0) store.set(groupId, requests); else store.delete(groupId);
     joinRequestsStore.set(sessionId, store);
+    try { groupActivityLog.log(sessionId, groupId, '', 'approve_request', `${participantJids.length} request(s) approved`); } catch (_) {}
     return result;
 }
 
@@ -1122,6 +1134,7 @@ async function rejectGroupJoinRequest(sessionId, groupId, participantJids) {
     const requests = (store.get(groupId) || []).filter(r => !participantJids.includes(r.participant));
     if (requests.length > 0) store.set(groupId, requests); else store.delete(groupId);
     joinRequestsStore.set(sessionId, store);
+    try { groupActivityLog.log(sessionId, groupId, '', 'reject_request', `${participantJids.length} request(s) rejected`); } catch (_) {}
     return result;
 }
 

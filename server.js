@@ -30,7 +30,7 @@ const bulkSender = require('./src/messaging/bulkSender');
 const scheduler = require('./src/messaging/scheduler');
 const importer = require('./src/contacts/importer');
 const license = require('./src/license');
-const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb, waGroupCategories: waGroupCategoriesDb, waContacts: waContactsDb } = require('./src/db/database');
+const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb, waGroupCategories: waGroupCategoriesDb, waContacts: waContactsDb, groupActivityLog: groupActivityLogDb } = require('./src/db/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -1405,7 +1405,7 @@ app.delete('/api/templates/:id', (req, res) => {
 // API ROUTES — Analytics/Dashboard
 // ═══════════════════════════════════════
 
-app.get('/api/analytics', (req, res) => {
+app.get('/api/analytics', async (req, res) => {
     try {
         const range = req.query.range || '30days';
         const now = new Date();
@@ -1508,6 +1508,10 @@ app.get('/api/analytics', (req, res) => {
             phone: s.phone
         }));
 
+        // Group activity stats
+        let groupActivity = { total: 0, actions: {}, addMember: 0, removeMember: 0, createGroup: 0, renameGroup: 0, leaveGroup: 0, promoteMember: 0, demoteMember: 0, approveRequest: 0, rejectRequest: 0 };
+        try { groupActivity = groupActivityLogDb.stats(sinceIso); } catch (e) { }
+
         // Build sinceIso for auto_reply_logs filtering
         let sinceIso = null;
         if (range === 'today') {
@@ -1532,11 +1536,30 @@ app.get('/api/analytics', (req, res) => {
         const quickReplyAnalytics = autoStats.quickReply;
 
         // Group stats
-        let groupStats = { totalCategories: 0, totalGroupsInCategories: 0 };
+        let groupStats = { totalCategories: 0, totalGroupsInCategories: 0, totalGroups: 0, totalMembers: 0, sessions: [] };
         try {
             const categories = waGroupCategoriesDb.getAll();
             groupStats.totalCategories = categories.length;
             groupStats.totalGroupsInCategories = categories.reduce((sum, c) => sum + (c.group_count || 0), 0);
+
+            // Get WhatsApp group counts from ready sessions (non-blocking, best-effort)
+            const readySessions = allSessions.filter(s => s.status === 'ready');
+            const sessionGroupData = await Promise.allSettled(readySessions.map(async (s) => {
+                try {
+                    const groups = await sessionManager.getWaGroups(s.id);
+                    const list = Array.isArray(groups) ? groups : (groups.value || []);
+                    return {
+                        sessionId: s.id,
+                        sessionName: s.name,
+                        groupCount: list.length,
+                        memberCount: list.reduce((sum, g) => sum + (g.participantCount || g.size || 0), 0),
+                    };
+                } catch { return null; }
+            }));
+            const sessionData = sessionGroupData.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+            groupStats.totalGroups = sessionData.reduce((sum, s) => sum + s.groupCount, 0);
+            groupStats.totalMembers = sessionData.reduce((sum, s) => sum + s.memberCount, 0);
+            groupStats.sessions = sessionData;
         } catch (e) { }
 
         const response = {
@@ -1556,7 +1579,8 @@ app.get('/api/analytics', (req, res) => {
             sessions,
             aiAnalytics,
             quickReplyAnalytics,
-            groupStats
+            groupStats,
+            groupActivity
         };
 
         console.log('[Analytics] Response stats:', response.stats);

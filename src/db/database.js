@@ -208,6 +208,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_wa_group_cat_members_cat ON wa_group_category_members(category_id);
 `);
 
+// Group activity log for dashboard stats
+try {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS group_activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            group_id TEXT,
+            group_name TEXT DEFAULT '',
+            action TEXT NOT NULL,
+            detail TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    `);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_group_activity_log_created ON group_activity_log(created_at)");
+} catch (e) { }
+
 // Migrations for existing databases
 try {
     db.prepare("SELECT message_content FROM campaign_messages LIMIT 0").get();
@@ -704,6 +720,37 @@ const followUps = {
     },
 };
 
+const groupActivityLog = {
+    log: (sessionId, groupId, groupName, action, detail) => {
+        db.prepare('INSERT INTO group_activity_log (session_id, group_id, group_name, action, detail, created_at) VALUES (?, ?, ?, ?, ?, datetime(\'now\'))').run(sessionId, groupId || '', groupName || '', action, detail || '');
+    },
+    stats: (sinceIso) => {
+        let sinceClause = '';
+        const params = [];
+        if (sinceIso) { sinceClause = 'WHERE created_at >= ?'; params.push(sinceIso); }
+
+        const rows = db.prepare(`SELECT action, COUNT(*) as count FROM group_activity_log ${sinceClause} GROUP BY action ORDER BY count DESC`).all(...params);
+        const total = db.prepare(`SELECT COUNT(*) as cnt FROM group_activity_log ${sinceClause}`).get(...params).cnt;
+
+        const actions = {};
+        for (const r of rows) actions[r.action] = r.count;
+
+        return {
+            total,
+            actions,
+            addMember: actions['add_member'] || 0,
+            removeMember: actions['remove_member'] || 0,
+            createGroup: actions['create_group'] || 0,
+            renameGroup: actions['rename_group'] || 0,
+            leaveGroup: actions['leave_group'] || 0,
+            promoteMember: actions['promote_member'] || 0,
+            demoteMember: actions['demote_member'] || 0,
+            approveRequest: actions['approve_request'] || 0,
+            rejectRequest: actions['reject_request'] || 0,
+        };
+    },
+};
+
 const waGroupCategories = {
     getAll: () => db.prepare('SELECT wc.*, (SELECT COUNT(*) FROM wa_group_category_members WHERE category_id = wc.id) as group_count FROM wa_group_categories wc ORDER BY wc.name').all(),
     getById: (id) => db.prepare('SELECT * FROM wa_group_categories WHERE id = ?').get(id),
@@ -733,4 +780,4 @@ const waGroupCategories = {
     },
 };
 
-module.exports = { db, sessions, groups, contacts, campaigns, messages, settings, quickReplies, templates, autoReplyLogs, waContacts, blacklist, webhooks, followUps, waGroupCategories };
+module.exports = { db, sessions, groups, contacts, campaigns, messages, settings, quickReplies, templates, autoReplyLogs, waContacts, blacklist, webhooks, followUps, waGroupCategories, groupActivityLog };

@@ -116,7 +116,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         );
     }
 
-    const { stats, messagesOverTime, hourlyPattern, aiAnalytics, quickReplyAnalytics, topCampaigns, sessions, groupStats } = data;
+    const { stats, messagesOverTime, hourlyPattern, aiAnalytics, quickReplyAnalytics, topCampaigns, sessions, groupStats, groupActivity } = data;
 
     const chartData = messagesOverTime?.labels?.map((label: string, i: number) => ({
         name: label,
@@ -374,18 +374,68 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                     </CardHeader>
                     <CardContent>
                         {groupStats ? (
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center p-2.5 rounded-lg bg-secondary/40">
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-secondary/40">
+                                    <span className="text-xs text-muted-foreground">Total Groups</span>
+                                    <span className="font-bold text-lg">{groupStats.totalGroups}</span>
+                                </div>
+                                <div className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-secondary/40">
+                                    <span className="text-xs text-muted-foreground">Total Members</span>
+                                    <span className="font-bold text-lg">{groupStats.totalMembers}</span>
+                                </div>
+                                <div className="flex justify-between items-center px-2.5 py-1.5 rounded-lg bg-secondary/40">
                                     <span className="text-xs text-muted-foreground">Categories</span>
                                     <span className="font-bold text-lg">{groupStats.totalCategories}</span>
                                 </div>
-                                <div className="flex justify-between items-center p-2.5 rounded-lg bg-secondary/40">
-                                    <span className="text-xs text-muted-foreground">Groups in Categories</span>
-                                    <span className="font-bold text-lg">{groupStats.totalGroupsInCategories}</span>
-                                </div>
+                                {groupStats.sessions?.map((s: any, i: number) => (
+                                    <div key={i} className="flex justify-between items-center px-2.5 py-1 rounded-lg hover:bg-secondary/60 transition-colors">
+                                        <span className="text-xs text-muted-foreground truncate max-w-[120px]">{s.sessionName}</span>
+                                        <span className="text-xs font-semibold">{s.groupCount} groups / {s.memberCount} members</span>
+                                    </div>
+                                ))}
                             </div>
                         ) : (
                             <p className="text-xs text-muted-foreground text-center py-6">No group data</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Group Activity */}
+                <Card
+                    onClick={() => onNavigate?.('groups')}
+                    className="card-glow cursor-pointer hover:border-primary/50 transition-all active:scale-[0.99] group/card"
+                >
+                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                            <Users className="w-4 h-4 text-emerald-400" /> Group Activity
+                        </CardTitle>
+                        <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover/card:opacity-100 group-hover/card:translate-x-0.5 transition-all text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                        {groupActivity ? (
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between items-center px-2.5 py-1 rounded-lg bg-secondary/30">
+                                    <span className="text-xs text-muted-foreground">Actions Total</span>
+                                    <span className="font-bold text-base">{groupActivity.total}</span>
+                                </div>
+                                {[
+                                    { label: 'Members Added', val: groupActivity.addMember, color: 'text-green-400' },
+                                    { label: 'Members Removed', val: groupActivity.removeMember, color: 'text-red-400' },
+                                    { label: 'Groups Created', val: groupActivity.createGroup, color: 'text-blue-400' },
+                                    { label: 'Requests Approved', val: groupActivity.approveRequest, color: 'text-emerald-400' },
+                                    { label: 'Requests Rejected', val: groupActivity.rejectRequest, color: 'text-orange-400' },
+                                    { label: 'Promotions', val: groupActivity.promoteMember, color: 'text-purple-400' },
+                                    { label: 'Demotions', val: groupActivity.demoteMember, color: 'text-yellow-400' },
+                                    { label: 'Renames', val: groupActivity.renameGroup, color: 'text-cyan-400' },
+                                ].map(item => (
+                                    <div key={item.label} className="flex justify-between items-center px-2.5 py-1 rounded-lg hover:bg-secondary/40 transition-colors">
+                                        <span className="text-xs text-muted-foreground">{item.label}</span>
+                                        <span className={`text-xs font-semibold ${item.color}`}>{item.val}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground text-center py-6">No activity yet</p>
                         )}
                     </CardContent>
                 </Card>
