@@ -1303,7 +1303,7 @@ export function GroupController() {
             </Dialog>
 
             {/* Bulk Add to Category */}
-            <Dialog open={isBulkAddOpen} onOpenChange={(open) => { setIsBulkAddOpen(open); if (open) { setBulkPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+            <Dialog open={isBulkAddOpen} onOpenChange={(open) => { setIsBulkAddOpen(open); if (open) { setBulkPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); if (selectedSession) fetchWaContacts(selectedSession); } }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Bulk Add Members</DialogTitle><DialogDescription>Add numbers to all groups in "{selectedCategory?.name}"</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
@@ -1351,7 +1351,7 @@ export function GroupController() {
             </Dialog>
 
             {/* Bulk Remove from Category */}
-            <Dialog open={isBulkRemoveOpen} onOpenChange={(open) => { setIsBulkRemoveOpen(open); if (open) { setBulkPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+            <Dialog open={isBulkRemoveOpen} onOpenChange={(open) => { setIsBulkRemoveOpen(open); if (open) { setBulkPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); if (selectedSession) fetchWaContacts(selectedSession); } }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Bulk Remove Members</DialogTitle><DialogDescription>Remove numbers from all groups in "{selectedCategory?.name}"</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
@@ -1399,7 +1399,7 @@ export function GroupController() {
             </Dialog>
 
             {/* Bulk Add to Selected Groups */}
-            <Dialog open={isBulkGroupAddOpen} onOpenChange={(open) => { setIsBulkGroupAddOpen(open); if (open) { setBulkGroupPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+            <Dialog open={isBulkGroupAddOpen} onOpenChange={(open) => { setIsBulkGroupAddOpen(open); if (open) { setBulkGroupPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); if (selectedSession) fetchWaContacts(selectedSession); } }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Add to Selected Groups</DialogTitle><DialogDescription>Add members to {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
@@ -1448,7 +1448,7 @@ export function GroupController() {
             </Dialog>
 
             {/* Bulk Remove from Selected Groups */}
-            <Dialog open={isBulkGroupRemoveOpen} onOpenChange={(open) => { setIsBulkGroupRemoveOpen(open); if (open) { setBulkGroupPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); } }}>
+            <Dialog open={isBulkGroupRemoveOpen} onOpenChange={(open) => { setIsBulkGroupRemoveOpen(open); if (open) { setBulkGroupPhones(''); setSelectedContacts(new Set()); setContactSearch(''); fetchContacts(); if (selectedSession) fetchWaContacts(selectedSession); } }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Remove from Selected Groups</DialogTitle><DialogDescription>Remove members from {selectedGroupIds.size} selected group(s)</DialogDescription></DialogHeader>
                     <div className="space-y-4 mt-4">
