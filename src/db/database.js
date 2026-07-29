@@ -186,6 +186,26 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_follow_ups_status ON follow_ups(status);
   CREATE INDEX IF NOT EXISTS idx_follow_ups_scheduled ON follow_ups(scheduled_for);
+
+  CREATE TABLE IF NOT EXISTS wa_group_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS wa_group_category_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id INTEGER NOT NULL,
+    session_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    group_name TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (category_id) REFERENCES wa_group_categories(id) ON DELETE CASCADE,
+    UNIQUE(category_id, session_id, group_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_wa_group_cat_members_cat ON wa_group_category_members(category_id);
 `);
 
 // Migrations for existing databases
@@ -344,6 +364,19 @@ const contacts = {
             }
         });
         tx(contactList);
+    },
+    update: (id, fields) => {
+        const allowed = ['phone', 'name', 'company', 'group_name', 'custom_fields'];
+        const sets = [];
+        const vals = [];
+        for (const [k, v] of Object.entries(fields)) {
+            if (!allowed.includes(k)) continue;
+            sets.push(`${k} = ?`);
+            vals.push(v);
+        }
+        if (sets.length === 0) return;
+        vals.push(id);
+        db.prepare(`UPDATE contacts SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     },
     delete: (id) => db.prepare('DELETE FROM contacts WHERE id = ?').run(id),
     deleteGroup: (groupName) => db.prepare('DELETE FROM contacts WHERE group_name = ?').run(groupName),
@@ -668,4 +701,33 @@ const followUps = {
     },
 };
 
-module.exports = { db, sessions, groups, contacts, campaigns, messages, settings, quickReplies, templates, autoReplyLogs, waContacts, blacklist, webhooks, followUps };
+const waGroupCategories = {
+    getAll: () => db.prepare('SELECT wc.*, (SELECT COUNT(*) FROM wa_group_category_members WHERE category_id = wc.id) as group_count FROM wa_group_categories wc ORDER BY wc.name').all(),
+    getById: (id) => db.prepare('SELECT * FROM wa_group_categories WHERE id = ?').get(id),
+    getMembers: (categoryId) => db.prepare('SELECT * FROM wa_group_category_members WHERE category_id = ? ORDER BY group_name').all(categoryId),
+    create: (name, description) => {
+        return db.prepare('INSERT INTO wa_group_categories (name, description) VALUES (?, ?)').run(name, description || '');
+    },
+    rename: (id, name) => db.prepare('UPDATE wa_group_categories SET name = ? WHERE id = ?').run(name, id),
+    delete: (id) => {
+        db.prepare('DELETE FROM wa_group_category_members WHERE category_id = ?').run(id);
+        db.prepare('DELETE FROM wa_group_categories WHERE id = ?').run(id);
+    },
+    addGroup: (categoryId, sessionId, groupId, groupName) => {
+        return db.prepare('INSERT OR IGNORE INTO wa_group_category_members (category_id, session_id, group_id, group_name) VALUES (?, ?, ?, ?)').run(categoryId, sessionId, groupId, groupName || '');
+    },
+    removeGroup: (categoryId, sessionId, groupId) => {
+        db.prepare('DELETE FROM wa_group_category_members WHERE category_id = ? AND session_id = ? AND group_id = ?').run(categoryId, sessionId, groupId);
+    },
+    removeGroupById: (id) => db.prepare('DELETE FROM wa_group_category_members WHERE id = ?').run(id),
+    getCategoriesForGroup: (sessionId, groupId) => {
+        return db.prepare(
+            `SELECT wc.* FROM wa_group_categories wc
+             INNER JOIN wa_group_category_members wcm ON wcm.category_id = wc.id
+             WHERE wcm.session_id = ? AND wcm.group_id = ?
+             ORDER BY wc.name`
+        ).all(sessionId, groupId);
+    },
+};
+
+module.exports = { db, sessions, groups, contacts, campaigns, messages, settings, quickReplies, templates, autoReplyLogs, waContacts, blacklist, webhooks, followUps, waGroupCategories };

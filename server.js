@@ -30,7 +30,7 @@ const bulkSender = require('./src/messaging/bulkSender');
 const scheduler = require('./src/messaging/scheduler');
 const importer = require('./src/contacts/importer');
 const license = require('./src/license');
-const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb } = require('./src/db/database');
+const { db, sessions: sessionsDb, contacts: contactsDb, groups: groupsDb, campaigns: campaignsDb, settings: settingsDb, messages: messagesDb, quickReplies: quickRepliesDb, templates: templatesDb, autoReplyLogs, blacklist: blacklistDb, webhooks: webhooksDb, followUps: followUpsDb, waGroupCategories: waGroupCategoriesDb } = require('./src/db/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -433,6 +433,24 @@ app.post('/api/contacts', (req, res) => {
         const { phone, name, company, group } = req.body;
         if (!phone || !phone.trim()) return res.status(400).json({ error: 'Phone number is required' });
         contactsDb.create(phone.trim(), name || '', company || '', {}, group || 'default');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/contacts/:id', (req, res) => {
+    try {
+        const { phone, name, company, group_name } = req.body;
+        const id = parseInt(req.params.id);
+        const existing = contactsDb.getById(id);
+        if (!existing) return res.status(404).json({ error: 'Contact not found' });
+        contactsDb.update(id, {
+            phone: phone !== undefined ? phone.trim() : existing.phone,
+            name: name !== undefined ? name : existing.name,
+            company: company !== undefined ? company : existing.company,
+            group_name: group_name !== undefined ? group_name : existing.group_name,
+        });
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1558,11 +1576,17 @@ CRITICAL INSTRUCTIONS FOR AI:
         has_company_logo: !!(all.company_logo_path && fs.existsSync(all.company_logo_path)),
         image_generation_prompt: all.image_generation_prompt || '',
         admin_phones: all.admin_phones || '',
+        company_name: all.company_name || '',
+        company_field: all.company_field || '',
+        company_description: all.company_description || '',
+        company_email: all.company_email || '',
+        company_website: all.company_website || '',
+        company_hours: all.company_hours || '',
     });
 });
 
 app.put('/api/settings', (req, res) => {
-    const allowed = ['theme', 'ai_provider', 'ai_model', 'ai_image_model', 'ai_chat_history', 'ai_chat_history_limit', 'ai_use_system_prompt', 'system_prompt', 'image_generation_prompt', 'min_delay', 'max_delay', 'gemini_api_key', 'openai_api_key', 'anti_ban_enabled', 'anti_ban_ignore_bots', 'anti_ban_cooldown_sec', 'anti_ban_typing_delay_min', 'anti_ban_typing_delay_max', 'admin_phones'];
+    const allowed = ['theme', 'ai_provider', 'ai_model', 'ai_image_model', 'ai_chat_history', 'ai_chat_history_limit', 'ai_use_system_prompt', 'system_prompt', 'image_generation_prompt', 'min_delay', 'max_delay', 'gemini_api_key', 'openai_api_key', 'anti_ban_enabled', 'anti_ban_ignore_bots', 'anti_ban_cooldown_sec', 'anti_ban_typing_delay_min', 'anti_ban_typing_delay_max', 'admin_phones', 'company_name', 'company_field', 'company_description', 'company_email', 'company_website', 'company_hours'];
     for (const key of allowed) {
         if (req.body[key] !== undefined && req.body[key] !== '••••••••') {
             settingsDb.set(key, req.body[key]);
@@ -1852,6 +1876,144 @@ app.post('/api/follow-ups/:id/run', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         try { followUpsDb.markFailed(parseInt(req.params.id)); } catch (e) { }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ═══════════════════════════════════════
+// API ROUTES — WhatsApp Group Categories
+// ═══════════════════════════════════════
+
+app.get('/api/wa-group-categories', (req, res) => {
+    res.json(waGroupCategoriesDb.getAll());
+});
+
+app.post('/api/wa-group-categories', (req, res) => {
+    try {
+        const { name, description } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ error: 'Category name is required' });
+        waGroupCategoriesDb.create(name.trim(), description || '');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/wa-group-categories/:id', (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ error: 'Category name is required' });
+        waGroupCategoriesDb.rename(parseInt(req.params.id), name.trim());
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/wa-group-categories/:id', (req, res) => {
+    try {
+        waGroupCategoriesDb.delete(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-group-categories/:id/groups', (req, res) => {
+    try {
+        const members = waGroupCategoriesDb.getMembers(parseInt(req.params.id));
+        res.json(members);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-group-categories/:id/add-group', (req, res) => {
+    try {
+        const { sessionId, groupId, groupName } = req.body;
+        if (!sessionId || !groupId) return res.status(400).json({ error: 'sessionId and groupId are required' });
+        waGroupCategoriesDb.addGroup(parseInt(req.params.id), sessionId, groupId, groupName || '');
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/wa-group-categories/:id/remove-group', (req, res) => {
+    try {
+        const { sessionId, groupId } = req.body;
+        if (!sessionId || !groupId) return res.status(400).json({ error: 'sessionId and groupId are required' });
+        waGroupCategoriesDb.removeGroup(parseInt(req.params.id), sessionId, groupId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/wa-group-categories/group-member/:memberId', (req, res) => {
+    try {
+        waGroupCategoriesDb.removeGroupById(parseInt(req.params.memberId));
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-group-categories/group/:sessionId/:groupId', (req, res) => {
+    try {
+        const categories = waGroupCategoriesDb.getCategoriesForGroup(req.params.sessionId, req.params.groupId);
+        res.json(categories);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Bulk action: add participant(s) to all groups in a category
+app.post('/api/wa-group-categories/:id/bulk-add', async (req, res) => {
+    try {
+        const { sessionId, participants } = req.body;
+        if (!sessionId || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId and participants are required' });
+        }
+        const members = waGroupCategoriesDb.getMembers(parseInt(req.params.id));
+        if (!members.length) return res.status(400).json({ error: 'Category has no groups' });
+
+        const results = [];
+        for (const m of members) {
+            try {
+                const r = await sessionManager.addGroupParticipants(sessionId, m.group_id, participants);
+                results.push({ groupId: m.group_id, groupName: m.group_name, status: 'ok', result: r });
+            } catch (err) {
+                results.push({ groupId: m.group_id, groupName: m.group_name, status: 'error', error: err.message });
+            }
+        }
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Bulk action: remove participant(s) from all groups in a category
+app.post('/api/wa-group-categories/:id/bulk-remove', async (req, res) => {
+    try {
+        const { sessionId, participants } = req.body;
+        if (!sessionId || !participants || !participants.length) {
+            return res.status(400).json({ error: 'sessionId and participants are required' });
+        }
+        const members = waGroupCategoriesDb.getMembers(parseInt(req.params.id));
+        if (!members.length) return res.status(400).json({ error: 'Category has no groups' });
+
+        const results = [];
+        for (const m of members) {
+            try {
+                const r = await sessionManager.removeGroupParticipants(sessionId, m.group_id, participants);
+                results.push({ groupId: m.group_id, groupName: m.group_name, status: 'ok', result: r });
+            } catch (err) {
+                results.push({ groupId: m.group_id, groupName: m.group_name, status: 'error', error: err.message });
+            }
+        }
+        res.json({ success: true, results });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });

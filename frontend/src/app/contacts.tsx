@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
     getContacts, getGroups, addGroup, deleteGroup, renameGroup,
-    addContact, deleteContact, bulkDeleteContacts, importContacts, uploadContactsCsv, importContactsMapped,
+    addContact, updateContact, deleteContact, bulkDeleteContacts, importContacts, uploadContactsCsv, importContactsMapped,
     syncWhatsAppContacts, getWhatsAppGroups, grabGroupContacts, moveToGroup, getSessions
 } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, Upload, Download, RefreshCw, Trash2, FolderPlus, FolderOpen, Smartphone, ChevronDown } from 'lucide-react';
+import { Search, Plus, Upload, Download, RefreshCw, Trash2, FolderPlus, FolderOpen, Smartphone, ChevronDown, Pencil, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function Contacts() {
@@ -35,6 +35,14 @@ export function Contacts() {
 
     const [isAddContactOpen, setIsAddContactOpen] = useState(false);
     const [newContact, setNewContact] = useState({ phone: '', name: '', company: '', group: 'default' });
+
+    const [isEditContactOpen, setIsEditContactOpen] = useState(false);
+    const [editingContact, setEditingContact] = useState<any>(null);
+    const [editForm, setEditForm] = useState({ phone: '', name: '', company: '', group_name: '' });
+
+    const [isMoveGroupOpen, setIsMoveGroupOpen] = useState(false);
+    const [moveTargetGroup, setMoveTargetGroup] = useState('');
+    const [movingContactIds, setMovingContactIds] = useState<string[]>([]);
 
     const [isAddGroupOpen, setIsAddGroupOpen] = useState(false);
     const [isRenameGroupOpen, setIsRenameGroupOpen] = useState(false);
@@ -198,6 +206,50 @@ export function Contacts() {
         } catch (error) {
             toast.error('Failed to delete group');
         }
+    };
+
+    const handleEditContact = async () => {
+        if (!editingContact) return;
+        if (!editForm.phone.trim()) return toast.error('Phone is required');
+        try {
+            await updateContact(editingContact.id, editForm);
+            toast.success('Contact updated');
+            setIsEditContactOpen(false);
+            setEditingContact(null);
+            fetchData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Failed to update contact');
+        }
+    };
+
+    const openEditDialog = (contact: any) => {
+        setEditingContact(contact);
+        setEditForm({
+            phone: contact.phone || '',
+            name: contact.name || '',
+            company: contact.company || '',
+            group_name: contact.group_name || '',
+        });
+        setIsEditContactOpen(true);
+    };
+
+    const handleMoveToGroup = async () => {
+        if (!moveTargetGroup || movingContactIds.length === 0) return;
+        try {
+            await moveToGroup(movingContactIds, moveTargetGroup, false);
+            toast.success(`Moved ${movingContactIds.length} contact(s) to ${moveTargetGroup}`);
+            setIsMoveGroupOpen(false);
+            setMoveTargetGroup('');
+            setMovingContactIds([]);
+            fetchData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Failed to move contacts');
+        }
+    };
+
+    const openMoveDialog = (contactId: string) => {
+        setMovingContactIds([contactId]);
+        setIsMoveGroupOpen(true);
     };
 
     const handleBulkDeleteContacts = async () => {
@@ -584,9 +636,17 @@ export function Contacts() {
                                                 </span>
                                             </TableCell>
                                             <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                <Button variant="ghost" size="icon" onClick={() => handleDeleteContact(c.id)} className="text-destructive hover:bg-destructive/10">
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button variant="ghost" size="icon" onClick={() => openMoveDialog(c.id)} className="hover:bg-primary/10" title="Move to group">
+                                                        <ArrowRight className="w-4 h-4 text-primary" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(c)} className="hover:bg-amber-500/10" title="Edit contact">
+                                                        <Pencil className="w-4 h-4 text-amber-500" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDeleteContact(c.id)} className="text-destructive hover:bg-destructive/10">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -646,6 +706,66 @@ export function Contacts() {
                             </Select>
                         </div>
                         <Button className="w-full" onClick={handleAddContact}>Save Contact</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Contact Modal */}
+            <Dialog open={isEditContactOpen} onOpenChange={setIsEditContactOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Contact</DialogTitle>
+                        {editingContact && <DialogDescription>Editing: {editingContact.name || editingContact.phone}</DialogDescription>}
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Phone (with country code)</Label>
+                            <Input placeholder="919876543210" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value.replace(/\D/g, '') })} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Name</Label>
+                            <Input placeholder="John Doe" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Company</Label>
+                            <Input placeholder="Acme Inc" value={editForm.company} onChange={(e) => setEditForm({ ...editForm, company: e.target.value })} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Group</Label>
+                            <Select value={editForm.group_name} onValueChange={(v) => setEditForm({ ...editForm, group_name: v || '' })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {groups.map(g => <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Button className="w-full" onClick={handleEditContact}>Update Contact</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Move to Group Modal */}
+            <Dialog open={isMoveGroupOpen} onOpenChange={setIsMoveGroupOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Move Contact to Group</DialogTitle>
+                        <DialogDescription>{movingContactIds.length} contact(s) selected</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Target Group</Label>
+                            <Select value={moveTargetGroup} onValueChange={(v) => setMoveTargetGroup(v || '')}>
+                                <SelectTrigger><SelectValue placeholder="Select group" /></SelectTrigger>
+                                <SelectContent>
+                                    {groups.filter(g => g.name !== selectedGroup || selectedGroup === 'all').map(g => (
+                                        <SelectItem key={g.id} value={g.name}>{g.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Button className="w-full gap-2" onClick={handleMoveToGroup} disabled={!moveTargetGroup}>
+                            <ArrowRight className="w-4 h-4" /> Move to {moveTargetGroup || '...'}
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>

@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Brain, Palette, KeyRound, Save, Infinity, Eye, EyeOff, CheckCircle, Sun, Moon, Cpu, Settings2, LogOut, ShieldCheck, ImagePlus, Trash2, RotateCcw, Sparkles, Bell } from 'lucide-react';
+import { Brain, Palette, KeyRound, Save, Infinity, Eye, EyeOff, CheckCircle, Sun, Moon, Cpu, Settings2, LogOut, ShieldCheck, ImagePlus, Trash2, RotateCcw, Sparkles, Bell, Building2, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ease = [0.25, 0.46, 0.45, 0.94] as const;
@@ -48,6 +48,12 @@ export function Settings() {
     const [activeTab, setActiveTab] = useState('ai');
     const [activePromptTab, setActivePromptTab] = useState<'bot' | 'image'>('bot');
     const [hasLogo, setHasLogo] = useState(false);
+    const [companyName, setCompanyName] = useState('');
+    const [companyField, setCompanyField] = useState('');
+    const [companyDescription, setCompanyDescription] = useState('');
+    const [companyEmail, setCompanyEmail] = useState('');
+    const [companyWebsite, setCompanyWebsite] = useState('');
+    const [companyHours, setCompanyHours] = useState('');
     const [logoVersion, setLogoVersion] = useState(0); // Cache-buster for logo preview
     const [logoUploading, setLogoUploading] = useState(false);
     const logoInputRef = React.useRef<HTMLInputElement>(null);
@@ -129,6 +135,12 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
         getSettings().then(s => {
             setSettings(s);
             setHasLogo(!!s.has_company_logo);
+            setCompanyName(s.company_name || '');
+            setCompanyField(s.company_field || '');
+            setCompanyDescription(s.company_description || '');
+            setCompanyEmail(s.company_email || '');
+            setCompanyWebsite(s.company_website || '');
+            setCompanyHours(s.company_hours || '');
         }).catch(console.error);
         getLicenseStatus().then(setLicense).catch(console.error);
         getDndSettings().then(d => {
@@ -141,7 +153,15 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
     const handleSave = async () => {
         setSaving(true);
         try {
-            await updateSettings(settings);
+            await updateSettings({
+                ...settings,
+                company_name: companyName,
+                company_field: companyField,
+                company_description: companyDescription,
+                company_email: companyEmail,
+                company_website: companyWebsite,
+                company_hours: companyHours,
+            });
             await updateDndSettings({ enabled: dndEnabled, startTime: dndStartTime, endTime: dndEndTime });
             toast.success('Settings saved successfully');
         } catch {
@@ -149,6 +169,50 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
         } finally {
             setSaving(false);
         }
+    };
+
+    const generatePromptFromCompany = () => {
+        const name = companyName.trim() || 'Our Company';
+        const field = companyField.trim() || 'our industry';
+        const desc = companyDescription.trim() || 'providing quality services to our customers';
+        const email = companyEmail.trim() || '';
+        const website = companyWebsite.trim() || '';
+        const hours = companyHours.trim() || 'Business hours';
+        const contactLines = [];
+        if (email) contactLines.push(`- Email: ${email}`);
+        if (website) contactLines.push(`- Website: ${website}`);
+        if (hours) contactLines.push(`- Business Hours: ${hours}`);
+
+        const prompt = `You are an intelligent, professional, and friendly customer support AI assistant for ${name}. Your primary goal is to assist customers by providing accurate information about our services and answering questions based on the information below.
+
+Business Information
+Business Name: ${name}
+Industry/Field: ${field}
+About Us: ${name} specializes in ${field}, ${desc}
+
+${contactLines.length ? `Contact Information:\n${contactLines.join('\n')}\n` : ''}
+Core Guidelines
+1. Tone & Approach: Maintain a polite, empathetic, and professional tone at all times. Be conversational yet professional.
+2. Information Delivery: Provide clear, concise, and accurate information. Structure responses logically with relevant details.
+3. Honesty & Transparency: Only provide information you are certain about. If information is not available, clearly state that and direct customers to the appropriate channels. NEVER make up pricing, timelines, or specific service details.
+4. Self-Service Focus: Guide customers to relevant resources. Provide clear next steps they can take independently.
+
+What NOT to Do
+- Do NOT offer to connect customers to a human representative
+- Do NOT promise specific deliverables, timelines, or pricing without qualification
+- Do NOT apologize excessively - be confident and solution-focused
+- Do NOT use phrases like "I'm just an AI" or "I'm limited"
+- Do NOT create false urgency or use pushy sales tactics
+
+CRITICAL INSTRUCTIONS FOR AI:
+- Respond to the user naturally and directly.
+- Keep your response concise and relevant.
+- Do NOT fall into a repetition loop.
+- Do NOT overuse emojis.
+- Vary your sentence structure dynamically based on the context.`;
+
+        setSettings((s: any) => ({ ...s, system_prompt: prompt }));
+        toast.success('System prompt generated from company info');
     };
 
     const handleDeactivate = async () => {
@@ -180,12 +244,15 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
                 className="flex-1 flex flex-col"
             >
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col">
-                    <TabsList className="grid w-full grid-cols-2 mb-6 bg-secondary/50 p-1 border border-border/50 max-w-md mx-auto">
+                    <TabsList className="grid w-full grid-cols-3 mb-6 bg-secondary/50 p-1 border border-border/50 max-w-2xl mx-auto">
                         <TabsTrigger value="ai" className="gap-2 text-xs">
                             <Cpu className="w-4 h-4" /> AI Engine
                         </TabsTrigger>
+                        <TabsTrigger value="company" className="gap-2 text-xs">
+                            <Building2 className="w-4 h-4" /> Company
+                        </TabsTrigger>
                         <TabsTrigger value="system" className="gap-2 text-xs">
-                            <Settings2 className="w-4 h-4" /> System Config
+                            <Settings2 className="w-4 h-4" /> System
                         </TabsTrigger>
                     </TabsList>
 
@@ -455,6 +522,66 @@ NO INVENTED BRANDING: Do NOT add logos or brand marks not explicitly provided`;
                                 )}
                             </div>
                         </div>
+                    </TabsContent>
+
+                    {/* COMPANY TAB */}
+                    <TabsContent value="company" className="mt-0">
+                        <Card className="card-glow border-border/50 shadow-sm">
+                            <CardHeader className="pb-4 pt-5 px-5 border-b border-border/30">
+                                <CardTitle className="text-base flex items-center gap-2.5 font-semibold">
+                                    <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-blue-500/20">
+                                        <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                                    </div>
+                                    Company Information
+                                </CardTitle>
+                                <CardDescription className="text-[11px] mt-1">
+                                    Set your company details to auto-generate the AI system prompt.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-5 space-y-5">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold">Company Name</Label>
+                                        <Input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="AJM" className="bg-secondary/30 h-9" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold">Industry / Field</Label>
+                                        <Input value={companyField} onChange={e => setCompanyField(e.target.value)} placeholder="Digital Agency, E-commerce, Real Estate..." className="bg-secondary/30 h-9" />
+                                    </div>
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <Label className="text-xs font-semibold">Company Description</Label>
+                                        <Textarea
+                                            value={companyDescription}
+                                            onChange={e => setCompanyDescription(e.target.value)}
+                                            placeholder="Briefly describe what your company does..."
+                                            className="bg-secondary/30 min-h-[80px] resize-none text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold">Email</Label>
+                                        <Input value={companyEmail} onChange={e => setCompanyEmail(e.target.value)} placeholder="hello@example.com" className="bg-secondary/30 h-9" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-semibold">Website</Label>
+                                        <Input value={companyWebsite} onChange={e => setCompanyWebsite(e.target.value)} placeholder="https://example.com" className="bg-secondary/30 h-9" />
+                                    </div>
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <Label className="text-xs font-semibold">Business Hours</Label>
+                                        <Input value={companyHours} onChange={e => setCompanyHours(e.target.value)} placeholder="Monday to Friday, 9 AM - 6 PM" className="bg-secondary/30 h-9" />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end pt-2 border-t border-border/30">
+                                    <Button
+                                        variant="default"
+                                        onClick={generatePromptFromCompany}
+                                        className="gap-2"
+                                        disabled={!companyName.trim()}
+                                    >
+                                        <Wand2 className="w-4 h-4" /> Generate System Prompt
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </TabsContent>
 
                     {/* SYSTEM TAB */}

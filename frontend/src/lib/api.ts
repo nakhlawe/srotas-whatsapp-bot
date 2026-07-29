@@ -33,6 +33,7 @@ export const getContacts = (group?: string, search?: string, page: number = 1, l
     api.get('/contacts', { params: { group, search, page, limit } }).then((r) => r.data);
 export const getContactGroups = () => api.get('/contacts/groups').then((r) => r.data);
 export const addContact = (data: any) => api.post('/contacts', data).then((r) => r.data);
+export const updateContact = (id: string, data: any) => api.put(`/contacts/${id}`, data).then((r) => r.data);
 export const deleteContact = (id: string) => api.delete(`/contacts/${id}`).then((r) => r.data);
 export const bulkDeleteContacts = (contactIds: string[]) => api.post('/contacts/bulk-delete', { contactIds }).then((r) => r.data);
 export const deleteContactGroup = (name: string) => api.delete(`/contacts/group/${name}`).then((r) => r.data);
@@ -142,3 +143,16 @@ export const renameWaGroup = (groupId: string, sessionId: string, name: string) 
 export const leaveWaGroup = (groupId: string, sessionId: string) => api.post(`/wa-groups/${groupId}/leave`, { sessionId }).then(r => r.data);
 export const getWaGroupInvite = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/invite`, { params: { sessionId } }).then(r => r.data);
 export const getWaGroupParticipantsDetailed = (groupId: string, sessionId: string) => api.get(`/wa-groups/${groupId}/participants/${sessionId}`).then(r => r.data);
+
+// WhatsApp Group Categories
+export const getWaGroupCategories = () => api.get('/wa-group-categories').then(r => r.data);
+export const createWaGroupCategory = (name: string, description?: string) => api.post('/wa-group-categories', { name, description }).then(r => r.data);
+export const renameWaGroupCategory = (id: number, name: string) => api.put(`/wa-group-categories/${id}`, { name }).then(r => r.data);
+export const deleteWaGroupCategory = (id: number) => api.delete(`/wa-group-categories/${id}`).then(r => r.data);
+export const getWaGroupCategoryMembers = (id: number) => api.get(`/wa-group-categories/${id}/groups`).then(r => r.data);
+export const addGroupToCategory = (id: number, sessionId: string, groupId: string, groupName?: string) => api.post(`/wa-group-categories/${id}/add-group`, { sessionId, groupId, groupName }).then(r => r.data);
+export const removeGroupFromCategory = (id: number, sessionId: string, groupId: string) => api.post(`/wa-group-categories/${id}/remove-group`, { sessionId, groupId }).then(r => r.data);
+export const removeGroupCategoryMember = (memberId: number) => api.delete(`/wa-group-categories/group-member/${memberId}`).then(r => r.data);
+export const getGroupCategories = (sessionId: string, groupId: string) => api.get(`/wa-group-categories/group/${sessionId}/${groupId}`).then(r => r.data);
+export const bulkAddToCategoryGroups = (id: number, sessionId: string, participants: string[]) => api.post(`/wa-group-categories/${id}/bulk-add`, { sessionId, participants }).then(r => r.data);
+export const bulkRemoveFromCategoryGroups = (id: number, sessionId: string, participants: string[]) => api.post(`/wa-group-categories/${id}/bulk-remove`, { sessionId, participants }).then(r => r.data);
