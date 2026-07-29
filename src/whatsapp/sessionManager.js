@@ -1037,6 +1037,88 @@ async function getGroupInviteCode(sessionId, groupId) {
     return await sock.groupInviteCode(groupId);
 }
 
+async function getGroupMetadataFull(sessionId, groupId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+    const metadata = await sock.groupMetadata(groupId);
+    if (!metadata) throw new Error('Group not found');
+    return metadata;
+}
+
+async function exportGroup(sessionId, groupId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+
+    const metadata = await sock.groupMetadata(groupId);
+    if (!metadata || !metadata.participants) throw new Error('Group not found');
+
+    const inviteCode = await sock.groupInviteCode(groupId).catch(() => null);
+    const inviteLink = inviteCode ? `https://chat.whatsapp.com/${inviteCode}` : '';
+
+    const store = contactStores.get(sessionId) || new Map();
+    const lidToPhoneMap = await buildLidToPhoneMap(sock);
+    await enrichContactStore(sock, sessionId, store, lidToPhoneMap);
+
+    const participants = metadata.participants
+        .map(p => {
+            const phone = extractPhoneFromJid(p.jid || p.id, p, lidToPhoneMap);
+            if (!phone) return null;
+            const contact = store.get(phone);
+            const displayName = contact?.name || p.name || p.notify || p.verifiedName || p.pushname || p.pushName || '';
+            const isAdmin = p.admin === 'admin' || p.admin === 'superadmin' || false;
+            return {
+                phone,
+                name: displayName,
+                isAdmin,
+                admin: p.admin || null,
+            };
+        })
+        .filter(Boolean);
+
+    const admins = participants.filter(p => p.isAdmin);
+    const creator = metadata.owner || metadata.creator || '';
+    const creatorPhone = creator ? extractPhoneFromJid(creator, {}, lidToPhoneMap) : '';
+    const creationTimestamp = metadata.creation ? new Date(metadata.creation * 1000).toISOString() : '';
+
+    return {
+        id: groupId,
+        name: metadata.subject || groupId,
+        description: metadata.desc || '',
+        creator: creatorPhone,
+        creatorJid: creator,
+        createdAt: creationTimestamp,
+        participantCount: participants.length,
+        adminCount: admins.length,
+        inviteLink,
+        inviteCode,
+        participants,
+        admins,
+    };
+}
+
+async function exportAllGroups(sessionId) {
+    const sock = clients.get(sessionId);
+    if (!sock) throw new Error('Session not found or not connected');
+
+    const groups = await sock.groupFetchAllParticipating();
+    const groupIds = Object.keys(groups);
+
+    const results = [];
+    for (const groupId of groupIds) {
+        try {
+            const data = await exportGroup(sessionId, groupId);
+            results.push(data);
+        } catch (e) {
+            results.push({
+                id: groupId,
+                name: groups[groupId]?.subject || groupId,
+                error: e.message,
+            });
+        }
+    }
+    return results;
+}
+
 // ═══════════════════════════════════════
 // Getters & Setters
 // ═══════════════════════════════════════
@@ -1120,6 +1202,9 @@ module.exports = {
     updateGroupDescription,
     leaveGroup,
     getGroupInviteCode,
+    getGroupMetadataFull,
+    exportGroup,
+    exportAllGroups,
     getGroupActionCount,
     // Utility exports for other modules
     extractMessageText,

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups } from '@/lib/api';
+import { getSessions, getWaGroups, getWaGroupParticipantsDetailed, addWaGroupMembers, removeWaGroupMembers, createWaGroup, renameWaGroup, leaveWaGroup, getWaGroupInvite, getWaGroupCategories, createWaGroupCategory, renameWaGroupCategory, deleteWaGroupCategory, getWaGroupCategoryMembers, addGroupToCategory, removeGroupCategoryMember, bulkAddToCategoryGroups, bulkRemoveFromCategoryGroups, exportWaGroup, exportAllWaGroupsCsv } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2, FolderTree, FolderPlus, Tag, Check, X, Trash2, Layers, Send } from 'lucide-react';
+import { Users, Plus, RefreshCw, Crown, Link, LogOut, UserPlus, UserMinus, Settings, Search, Loader2, Copy, Shield, Phone, Building2, FolderTree, FolderPlus, Tag, Check, X, Trash2, Layers, Send, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function GroupController() {
@@ -374,6 +374,9 @@ export function GroupController() {
                     <Button variant="outline" onClick={() => fetchGroups(selectedSession)} disabled={!selectedSession || loading}>
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
                     </Button>
+                    <Button variant="outline" onClick={() => selectedSession && window.open(exportAllWaGroupsCsv(selectedSession), '_blank')} disabled={!selectedSession}>
+                        <Download className="w-4 h-4 mr-2" /> Export All
+                    </Button>
                     <Button onClick={() => setIsCreateOpen(true)} disabled={!selectedSession}>
                         <Plus className="w-4 h-4 mr-2" /> Create Group
                     </Button>
@@ -459,6 +462,9 @@ export function GroupController() {
                                                         <UserMinus className="w-3.5 h-3.5 mr-1" /> Remove
                                                     </Button>
                                                 )}
+                                                <Button variant="outline" size="sm" onClick={() => selectedSession && window.open(`/api/wa-groups/${selectedGroup.id}/export/${selectedSession}`, '_blank')}>
+                                                    <Download className="w-3.5 h-3.5 mr-1" /> Export
+                                                </Button>
                                                 <Button variant="outline" size="sm" onClick={handleGetInvite}>
                                                     <Link className="w-3.5 h-3.5 mr-1" /> Invite
                                                 </Button>

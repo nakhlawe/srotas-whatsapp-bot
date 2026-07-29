@@ -680,6 +680,69 @@ app.get('/api/wa-groups/rate-limit', (req, res) => {
     res.json({ count: sessionManager.getGroupActionCount(), limit: 5, window: '1 minute' });
 });
 
+// ─── Group Export ───
+
+app.get('/api/wa-groups/:groupId/export/:sessionId', async (req, res) => {
+    try {
+        const { sessionId, groupId } = req.params;
+        const state = sessionManager.getSessionState(sessionId);
+        if (state.status !== 'ready') {
+            return res.status(400).json({ error: `Session is not ready (status: ${state.status})` });
+        }
+        const data = await sessionManager.exportGroup(sessionId, groupId);
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-groups/export-all/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const state = sessionManager.getSessionState(sessionId);
+        if (state.status !== 'ready') {
+            return res.status(400).json({ error: `Session is not ready (status: ${state.status})` });
+        }
+        const data = await sessionManager.exportAllGroups(sessionId);
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/wa-groups/export-all-csv/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const state = sessionManager.getSessionState(sessionId);
+        if (state.status !== 'ready') {
+            return res.status(400).json({ error: `Session is not ready (status: ${state.status})` });
+        }
+        const groups = await sessionManager.exportAllGroups(sessionId);
+
+        let csv = 'group_name,group_id,member_count,admin_count,invite_link,creator,created_at,member_phone,member_name,is_admin\n';
+        const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+        for (const g of groups) {
+            if (g.error) {
+                csv += `${esc(g.name)},${esc(g.id)},,,,,,,\n`;
+                continue;
+            }
+            if (g.participants && g.participants.length > 0) {
+                for (const p of g.participants) {
+                    csv += `${esc(g.name)},${esc(g.id)},${g.participantCount},${g.adminCount},${esc(g.inviteLink)},${esc(g.creator)},${esc(g.createdAt)},${esc(p.phone)},${esc(p.name)},${p.isAdmin ? 'Yes' : 'No'}\n`;
+                }
+            } else {
+                csv += `${esc(g.name)},${esc(g.id)},${g.participantCount},${g.adminCount},${esc(g.inviteLink)},${esc(g.creator)},${esc(g.createdAt)},,,,\n`;
+            }
+        }
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment(`whatsapp-groups-export-${Date.now()}.csv`);
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/wa-groups/:groupId/participants/:sessionId', async (req, res) => {
     try {
         const { groupId, sessionId } = req.params;
