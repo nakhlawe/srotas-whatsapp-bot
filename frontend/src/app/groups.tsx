@@ -682,6 +682,10 @@ export function GroupController() {
                                     className="pl-9"
                                 />
                             </div>
+                            <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                                <span>{filteredGroups.length} group{filteredGroups.length !== 1 ? 's' : ''}{searchGroup ? ` matching "${searchGroup}"` : ''}</span>
+                                {filteredGroups.length > PAGE_SIZE && <span>Page {page + 1} / {pageCount}</span>}
+                            </div>
                             {loading ? (
                                 <Card><CardContent className="pt-6 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> Loading...</CardContent></Card>
                             ) : filteredGroups.length === 0 ? (
@@ -690,11 +694,10 @@ export function GroupController() {
                                 <GroupList />
                             )}
                             {filteredGroups.length > PAGE_SIZE && (
-                                <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
-                                    <span>{filteredGroups.length} groups total</span>
-                                    <div className="flex items-center gap-1">
+                                <div className="flex items-center justify-between pt-2">
+                                    <div className="flex items-center gap-1 ml-auto">
                                         <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Prev</Button>
-                                        <span className="px-2">{page + 1} / {pageCount}</span>
+                                        <span className="px-2 text-xs text-muted-foreground">{page + 1} / {pageCount}</span>
                                         <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
                                     </div>
                                 </div>

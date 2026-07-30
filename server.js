@@ -922,6 +922,34 @@ app.get('/api/wa-groups/export-all-summary-csv/:sessionId', async (req, res) => 
     }
 });
 
+app.post('/api/wa-groups/export-selected-csv/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { groupIds } = req.body;
+        if (!groupIds || !Array.isArray(groupIds) || !groupIds.length) {
+            return res.status(400).json({ error: 'groupIds array is required' });
+        }
+        const state = sessionManager.getSessionState(sessionId);
+        if (state.status !== 'ready') {
+            return res.status(400).json({ error: `Session is not ready (status: ${state.status})` });
+        }
+        const allGroups = await sessionManager.exportAllGroupsSummary(sessionId);
+        const selected = allGroups.filter(g => groupIds.includes(g.id));
+
+        let csv = 'group_name,member_count,admin_count,invite_link\n';
+        const esc = (v) => `"${String(v || '').replace(/"/g, '""')}"`;
+        for (const g of selected) {
+            csv += `${esc(g.name)},${g.participantCount || 0},${g.adminCount || 0},${esc(g.inviteLink || '')}\n`;
+        }
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment(`selected-groups-export-${Date.now()}.csv`);
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/wa-groups/:groupId/participants/:sessionId', async (req, res) => {
     try {
         const { groupId, sessionId } = req.params;

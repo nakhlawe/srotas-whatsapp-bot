@@ -149,6 +149,15 @@ export const exportWaGroup = (groupId: string, sessionId: string) => api.get(`/w
 export const exportAllWaGroups = (sessionId: string) => api.get(`/wa-groups/export-all/${sessionId}`).then(r => r.data);
 export const exportAllWaGroupsCsv = (sessionId: string) => `/api/wa-groups/export-all-csv/${sessionId}`;
 export const exportAllWaGroupsSummaryCsv = (sessionId: string) => `/api/wa-groups/export-all-summary-csv/${sessionId}`;
+export const exportSelectedGroupsCsv = async (sessionId: string, groupIds: string[]) => {
+    const response = await api.post(`/wa-groups/export-selected-csv/${sessionId}`, { groupIds }, { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `selected-groups-export-${Date.now()}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+};
 
 // Sorting & Auto-categorize
 export const getWaGroupsSorted = (sessionId: string, order: 'asc' | 'desc' = 'desc') =>
