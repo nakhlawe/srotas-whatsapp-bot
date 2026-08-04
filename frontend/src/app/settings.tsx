@@ -34,6 +34,10 @@ export function Settings() {
         anti_ban_cooldown_sec: '30',
         anti_ban_typing_delay_min: '3',
         anti_ban_typing_delay_max: '6',
+        bulk_daily_limit: '0',
+        bulk_batch_size: '25',
+        bulk_batch_pause_min: '60',
+        bulk_batch_pause_max: '120',
         image_generation_prompt: '',
     });
 
@@ -653,6 +657,54 @@ CRITICAL INSTRUCTIONS FOR AI:
                                                     max="60"
                                                     value={settings.anti_ban_typing_delay_max}
                                                     onChange={e => setSettings({ ...settings, anti_ban_typing_delay_max: e.target.value })}
+                                                    placeholder="Max"
+                                                    className="bg-secondary/30 font-mono h-8 text-xs"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5 bg-background/50 border border-border/50 rounded-lg p-3">
+                                            <Label className="text-xs font-semibold text-foreground/90">Daily Send Limit (Bulk)</Label>
+                                            <p className="text-[10px] text-muted-foreground">Max bulk messages per session per day. 0 = unlimited.</p>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={settings.bulk_daily_limit}
+                                                onChange={e => setSettings({ ...settings, bulk_daily_limit: e.target.value })}
+                                                className="bg-secondary/30 font-mono h-8 text-xs mt-1"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5 bg-background/50 border border-border/50 rounded-lg p-3">
+                                            <Label className="text-xs font-semibold text-foreground/90">Batch Size (Bulk)</Label>
+                                            <p className="text-[10px] text-muted-foreground">Take a longer break after this many bulk messages (Default: 25).</p>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={settings.bulk_batch_size}
+                                                onChange={e => setSettings({ ...settings, bulk_batch_size: e.target.value })}
+                                                className="bg-secondary/30 font-mono h-8 text-xs mt-1"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5 bg-background/50 border border-border/50 rounded-lg p-3">
+                                            <Label className="text-xs font-semibold text-foreground/90">Batch Break Range (Seconds)</Label>
+                                            <p className="text-[10px] text-muted-foreground">Pause between batches (Default: 60 to 120s).</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    value={settings.bulk_batch_pause_min}
+                                                    onChange={e => setSettings({ ...settings, bulk_batch_pause_min: e.target.value })}
+                                                    placeholder="Min"
+                                                    className="bg-secondary/30 font-mono h-8 text-xs"
+                                                />
+                                                <span className="text-xs text-muted-foreground">to</span>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    value={settings.bulk_batch_pause_max}
+                                                    onChange={e => setSettings({ ...settings, bulk_batch_pause_max: e.target.value })}
                                                     placeholder="Max"
                                                     className="bg-secondary/30 font-mono h-8 text-xs"
                                                 />

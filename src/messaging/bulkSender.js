@@ -106,6 +106,16 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
 
     const minDelay = options.minDelay || parseInt(process.env.MIN_DELAY_MS) || 8000;
     const maxDelay = options.maxDelay || parseInt(process.env.MAX_DELAY_MS) || 18000;
+    const dailyLimit = parseInt(settingsDb.get('bulk_daily_limit')) || 0; // 0 = unlimited
+    const batchSize = parseInt(settingsDb.get('bulk_batch_size')) || 25;
+    const batchPauseMin = (parseInt(settingsDb.get('bulk_batch_pause_min')) || 60) * 1000;
+    const batchPauseMax = (parseInt(settingsDb.get('bulk_batch_pause_max')) || 120) * 1000;
+
+    let sentToday = messagesDb.countSentToday(sessionId);
+    if (dailyLimit > 0 && sentToday >= dailyLimit) {
+        throw new Error(`Daily send limit reached for this session (${sentToday}/${dailyLimit}). Try again tomorrow or raise the limit in Settings.`);
+    }
+
     const groupName = options.groupName || '';
     const mediaPath = options.mediaPath || null;
     const mediaPaths = options.mediaPaths || null;
@@ -202,6 +212,25 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
                 continue;
             }
 
+            // ─── Daily Limit Check: stop the campaign once the session's daily cap is hit ───
+            if (dailyLimit > 0 && sentToday >= dailyLimit) {
+                console.log(`[BulkSender] Daily limit reached (${sentToday}/${dailyLimit}) — stopping remaining sends`);
+                for (let j = i; j < contacts.length; j++) {
+                    const c = contacts[j];
+                    failed++;
+                    campaignsDb.addMessage(activeCampaignId, c.phone, c.name, 'failed', 'Daily send limit reached — resume tomorrow', '');
+                    campaignsDb.incrementFailed(activeCampaignId);
+                    if (io) {
+                        io.emit('bulk:progress', {
+                            campaignId: activeCampaignId, sessionId,
+                            current: j + 1, total: contacts.length, sent, failed,
+                            lastPhone: c.phone, lastName: c.name, lastStatus: 'failed', error: 'Daily send limit reached',
+                        });
+                    }
+                }
+                break;
+            }
+
             // Re-check session is still connected before each send
             const currentSock = sessionManager.getClient(sessionId);
             if (!currentSock) {
@@ -260,6 +289,14 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
                     }
                 }
 
+                // ─── Simulate human presence before sending (brief "online" + "typing") ───
+                try {
+                    await currentSock.presenceSubscribe(chatId);
+                    await currentSock.sendPresenceUpdate('composing', chatId);
+                    await new Promise(r => setTimeout(r, 1000 + Math.floor(Math.random() * 1500)));
+                    await currentSock.sendPresenceUpdate('paused', chatId);
+                } catch (e) { /* ignore presence errors — not critical to delivery */ }
+
                 // ─── Construct & Send Message ───
                 if (mediaList.length > 0) {
                     // Non-blocking async file read for first media buffer
@@ -302,6 +339,7 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
                 campaignsDb.addMessage(activeCampaignId, contact.phone, contact.name, 'sent', null, message);
                 campaignsDb.incrementSent(activeCampaignId);
                 sent++;
+                sentToday++;
                 results.push({ phone: contact.phone, status: 'sent', message });
 
                 if (io) {
@@ -338,10 +376,17 @@ async function sendBulk(sessionId, contacts, template, options = {}) {
                 }
             }
 
-            // Random delay between sends (except after the last message)
+            // Random delay between sends (except after the last message).
+            // Every `batchSize` messages, take a longer human-like break instead.
             if (i < contacts.length - 1) {
-                const delay = Math.floor(Math.random() * (maxDelay - minDelay) + minDelay);
-                await new Promise(r => setTimeout(r, delay));
+                if (batchSize > 0 && (i + 1) % batchSize === 0) {
+                    const pause = Math.floor(Math.random() * (batchPauseMax - batchPauseMin) + batchPauseMin);
+                    console.log(`[BulkSender] Batch of ${batchSize} reached — pausing ${Math.round(pause / 1000)}s`);
+                    await new Promise(r => setTimeout(r, pause));
+                } else {
+                    const delay = Math.floor(Math.random() * (maxDelay - minDelay) + minDelay);
+                    await new Promise(r => setTimeout(r, delay));
+                }
             }
         }
     } catch (err) {

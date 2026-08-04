@@ -477,6 +477,12 @@ const messages = {
     cleanup: (daysToKeep = 30) => {
         return db.prepare("DELETE FROM messages WHERE timestamp < datetime('now', '-' || ? || ' days')").run(daysToKeep);
     },
+    countSentToday: (sessionId) => {
+        const row = db.prepare(
+            "SELECT COUNT(*) as count FROM messages WHERE session_id = ? AND direction = 'out' AND status = 'sent' AND date(timestamp) = date('now')"
+        ).get(sessionId);
+        return row ? row.count : 0;
+    },
 };
 
 // WhatsApp-synced contacts (persisted so they survive server restarts,
